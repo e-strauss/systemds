@@ -384,8 +384,8 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 	public List<DependencyTask<?>> getApplyTasks(CacheBlock<?> in, MatrixBlock out, int outputCol) {
 		List<Callable<Object>> tasks = new ArrayList<>();
 		List<List<? extends Callable<?>>> dep = null;
-		int[] blockSizes = getBlockSizes(in.getNumRows(), _nApplyPartitions);
-
+		//for now single threaded apply for bag of words
+		int[] blockSizes =  (this instanceof ColumnEncoderBagOfWords) ? new int[]{in.getNumRows()} : getBlockSizes(in.getNumRows(), _nApplyPartitions);
 		for(int startRow = 0, i = 0; i < blockSizes.length; startRow+=blockSizes[i], i++){
 			if(out.isInSparseFormat())
 				tasks.add(getSparseTask(in, out, outputCol, startRow, blockSizes[i]));

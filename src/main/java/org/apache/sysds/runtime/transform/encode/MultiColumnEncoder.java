@@ -220,11 +220,13 @@ public class MultiColumnEncoder implements Encoder {
 					new Integer[] {0, 1});                                     //Allocation task (1st task)
 			ApplyTasksWrapperTask applyTaskWrapper = new ApplyTasksWrapperTask(e, in, out, pool);
 
-			if(e.hasEncoder(ColumnEncoderDummycode.class)) {
-				// Allocation depends on build if DC is in the list.
+			if(e.hasEncoder(ColumnEncoderDummycode.class) || e.hasEncoder(ColumnEncoderBagOfWords.class)) {
+				// Allocation depends on build if DC or BOW is in the list.
 				// Note, DC is the only encoder that changes dimensionality
-				depMap.put(new Integer[] {0, 1},                               //Allocation task (1st task)
-					new Integer[] {tasks.size() - 1, tasks.size()});           //BuildTask
+				depMap.put(new Integer[]{0, 1},                               //Allocation task (1st task)
+						new Integer[]{tasks.size() - 1, tasks.size()});       //BuildTask
+			}
+			if(e.hasEncoder(ColumnEncoderDummycode.class)){
 				// UpdateOutputColTask, that sets the starting offsets of the DC columns,
 				// depends on the Build completion tasks
 				depMap.put(new Integer[] {-2, -1},                             //UpdateOutputColTask (last task) 
