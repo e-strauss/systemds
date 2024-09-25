@@ -120,6 +120,7 @@ public class ColumnEncoderDummycode extends ColumnEncoder {
 		ArrayList<Integer> sparseRowsWZeros = null;
 		int index = _colID - 1;
 		for(int r = rowStart; r < getEndIndex(in.getNumRows(), rowStart, blk); r++) {
+			index += sparseRowPointerOffset != null ? sparseRowPointerOffset[r] : 0;
 			if(mcsr) {
 				double val = out.getSparseBlock().get(r).values()[index];
 				if(Double.isNaN(val)) {
@@ -302,12 +303,6 @@ public class ColumnEncoderDummycode extends ColumnEncoder {
 	}
 
 	private static class DummycodeSparseApplyTask extends ColumnApplyTask<ColumnEncoderDummycode> {
-
-		protected DummycodeSparseApplyTask(ColumnEncoderDummycode encoder, MatrixBlock input, 
-				MatrixBlock out, int outputCol) {
-			super(encoder, input, out, outputCol);
-		}
-
 		protected DummycodeSparseApplyTask(ColumnEncoderDummycode encoder, MatrixBlock input,
 				MatrixBlock out, int outputCol, int startRow, int blk) {
 			super(encoder, input, out, outputCol, startRow, blk);
