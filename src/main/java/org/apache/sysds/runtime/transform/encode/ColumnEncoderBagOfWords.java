@@ -20,7 +20,6 @@
 package org.apache.sysds.runtime.transform.encode;
 
 import org.apache.commons.lang3.NotImplementedException;
-import org.apache.sysds.runtime.DMLRuntimeException;
 import org.apache.sysds.runtime.controlprogram.caching.CacheBlock;
 import org.apache.sysds.runtime.frame.data.FrameBlock;
 import org.apache.sysds.runtime.matrix.data.MatrixBlock;
@@ -40,9 +39,12 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 		wordDictionary = new HashMap<>();
 	}
 
-	@Override
+    public ColumnEncoderBagOfWords() {
+        super(-1);
+    }
+
+    @Override
 	public int getDomainSize(){
-		System.out.println("Alloc Done");
 		return wordDictionary.size();
 	}
 
@@ -58,7 +60,7 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 
 	@Override
 	protected TransformType getTransformType() {
-		return null;
+		return TransformType.BAG_OF_WORDS;
 	}
 
 	public List<DependencyTask<?>> getBuildTasks(CacheBlock<?> in){
@@ -84,13 +86,12 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 						if(!this.wordDictionary.containsKey(word))
 							this.wordDictionary.put(word, i++);
 		}
-		System.out.println("Built Done");
 	}
 
 	@Override
 	protected void applyDense(CacheBlock<?> in, MatrixBlock out, int outputCol, int rowStart, int blk){
 		for (int r = rowStart; r < Math.max(in.getNumRows(), rowStart + blk); r++) {
-			String current = in.getString(r, this._colID);
+			String current = in.getString(r, this._colID - 1);
 			HashMap<String, Integer> counter = new HashMap<>();
 			for (String word : current.split(regex))
 				if (!word.isEmpty()) {
@@ -98,11 +99,10 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 					counter.put(word, old + 1);
 				}
 			for (String word : counter.keySet()) {
-				int c = this._colID + wordDictionary.get(word);
+				int c = this._colID - 1 + wordDictionary.get(word);
 				out.set(r, c, counter.get(word));
 			}
 		}
-		System.out.println("Apply Done");
 	}
 
 	@Override
@@ -131,8 +131,7 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 		}
 
 		@Override
-		public Void call() throws Exception {
-			System.out.println("HEY");
+		public Void call() {
 			_encoder.build(_input);
 			return null;
 		}

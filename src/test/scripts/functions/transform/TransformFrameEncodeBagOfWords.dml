@@ -27,7 +27,7 @@ jspec = "{ids: true, bag_of_words: [1]}";
 
 #Data_enc = transformapply(target=Data, spec=jspec, meta=Meta);
 print(nrow(Data_enc) + " x " + ncol(Data_enc))
-print(toString(Data_enc[1,1]))
+print(toString(Data_enc))
 
 #write(R, $2, format="text");
 

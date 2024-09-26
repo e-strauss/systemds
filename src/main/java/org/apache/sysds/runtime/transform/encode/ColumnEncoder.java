@@ -72,7 +72,7 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 	}
 
 	protected enum TransformType{
-		BIN, RECODE, DUMMYCODE, FEATURE_HASH, PASS_THROUGH, UDF, WORD_EMBEDDING, N_A
+		BIN, RECODE, DUMMYCODE, FEATURE_HASH, PASS_THROUGH, UDF, WORD_EMBEDDING, BAG_OF_WORDS, N_A
 	}
 
 	protected ColumnEncoder(int colID) {
@@ -114,6 +114,9 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 					break;
 				case WORD_EMBEDDING:
 					TransformStatistics.incWordEmbeddingApplyTime(t);
+					break;
+				case BAG_OF_WORDS:
+					TransformStatistics.incBagOfWordsApplyTime(t);
 					break;
 				case FEATURE_HASH:
 					TransformStatistics.incFeatureHashingApplyTime(t);
