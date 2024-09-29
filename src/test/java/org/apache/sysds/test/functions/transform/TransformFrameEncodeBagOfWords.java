@@ -19,7 +19,10 @@
 
 package org.apache.sysds.test.functions.transform;
 
+import org.apache.sysds.common.Types;
 import org.apache.sysds.common.Types.ExecMode;
+import org.apache.sysds.runtime.frame.data.FrameBlock;
+import org.apache.sysds.runtime.matrix.data.MatrixValue;
 import org.apache.sysds.test.AutomatedTestBase;
 import org.apache.sysds.test.TestConfiguration;
 import org.apache.sysds.test.TestUtils;
@@ -46,15 +49,30 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 
 	@Test
 	public void testTransformBagOfWords() {
-		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE);
+		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, false, false);
+	}
+
+	@Test
+	public void testTransformBagOfWordsPlusRecode() {
+		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, true, false);
+	}
+
+	@Test
+	public void testTransformBagOfWords2() {
+		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, false, true);
+	}
+
+	@Test
+	public void testTransformBagOfWordsPlusRecode2() {
+		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, true, true);
 	}
 
 	@Test
 	public void testTransformBagOfWordsSpark() {
-		runTransformTest(TEST_NAME1, ExecMode.SPARK);
+		runTransformTest(TEST_NAME1, ExecMode.SPARK, false, false);
 	}
 
-	private void runTransformTest(String testname, ExecMode rt)
+	private void runTransformTest(String testname, ExecMode rt, boolean recode, boolean dup)
 	{
 		//set runtime platform
 		ExecMode rtold = setExecMode(rt);
@@ -64,15 +82,19 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 			fullDMLScriptName = getScript();
 
 			// Create the dataset by repeating and shuffling the distinct tokens
-			List<String> sentenceColumn = new ArrayList<>();
-			sentenceColumn.add("This is the first document.");
-			sentenceColumn.add("This document is the second document.");
-			sentenceColumn.add("And this is the third one.");
-			sentenceColumn.add("Is this the first document?");
-			writeStringsToCsvFile(sentenceColumn, baseDirectory + INPUT_DIR + "data");
+			String[] sentenceColumn = new String[]{"This is the first document","This document is the second document",
+					"And this is the third one","Is this the first document"};
+			String[] recodeColumn = recode ? new String[]{"A", "B", "A", "C"} : null;
+			writeStringsToCsvFile(sentenceColumn, recodeColumn, baseDirectory + INPUT_DIR + "data", dup);
 
-			programArgs = new String[]{"-stats","-args", input("data"), output("result")};
+			programArgs = new String[]{"-stats","-args", input("data"), output("result"), output("dict"),
+					String.valueOf(recode), String.valueOf(dup)};
 			runTest(true, EXCEPTION_NOT_EXPECTED, null, -1);
+			HashMap<MatrixValue.CellIndex, Double> res_actual = readDMLMatrixFromOutputDir("result");
+			double[][] result = TestUtils.convertHashMapToDoubleArray(res_actual);
+			System.out.println(baseDirectory);
+			FrameBlock dict_frame = readDMLFrameFromHDFS( "dict", Types.FileFormat.CSV);
+			checkResults(sentenceColumn, result, recodeColumn, dict_frame, dup);
 		}
 		catch(Exception ex) {
 			throw new RuntimeException(ex);
@@ -82,12 +104,60 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 		}
 	}
 
-	public static void writeStringsToCsvFile(List<String> strings, String fileName) throws IOException {
+	public static void checkResults(String[] sentences, double[][] result, String[] recodeColumn, FrameBlock dict, boolean dup){
+		HashMap<String, Integer> indices = new HashMap<>();
+		for (int i = 0; i < dict.getNumRows(); i++) {
+			String[] tuple = dict.getString(i, 0).split("\u00b7");
+			indices.put(tuple[0], Integer.parseInt(tuple[1]));
+		}
+		HashMap<String, Integer> rcdMap = new HashMap<>();
+		if(recodeColumn != null){
+			for (int i = 0; i < dict.getNumRows(); i++) {
+				String current = dict.getString(i, 1);
+				if(current == null)
+					break;
+				String[] tuple = current.split("\u00b7");
+				rcdMap.put(tuple[0], Integer.parseInt(tuple[1]));
+			}
+		}
+		int r = 0;
+		for (int i = 0; i < sentences.length; i++) {
+			String sentence = sentences[i];
+			HashMap<String, Integer> count = new HashMap<>();
+			String[] words = sentence.split(" ");
+			for (String word : words) {
+				if (!word.isEmpty()) {
+					Integer old = count.getOrDefault(word, 0);
+					count.put(word, old + 1);
+				}
+			}
+
+			// compare results: bag of words
+			for(Map.Entry<String, Integer> entry : count.entrySet()){
+				String word = entry.getKey();
+				int count_expected = entry.getValue();
+				int index = indices.get(word);
+				assert result[r][index] == count_expected;
+			}
+
+			int offset = indices.size();
+
+			// recode:
+			if(recodeColumn != null)
+				assert result[r][offset] == rcdMap.get(recodeColumn[r]);
+			r++;
+		}
+	}
+
+	public static void writeStringsToCsvFile(String[] sentences, String[] recodeTokens, String fileName, boolean duplicate) throws IOException {
 		Path path = Paths.get(fileName);
 		Files.createDirectories(path.getParent());
 		try (BufferedWriter bw = Files.newBufferedWriter(path)) {
-			for (String line : strings) {
-				bw.write(line);
+			for (int i = 0; i < sentences.length; i++) {
+				String out = sentences[i] +  (recodeTokens != null ? "," + recodeTokens[i] : "");
+				if(duplicate)
+					out = out  + ","  + out;
+				bw.write(out);
 				bw.newLine();
 			}
 		} catch (IOException e) {

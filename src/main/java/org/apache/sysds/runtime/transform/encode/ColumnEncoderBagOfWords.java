@@ -29,9 +29,11 @@ import org.apache.sysds.runtime.util.DependencyThreadPool;
 import java.util.*;
 import java.util.concurrent.Callable;
 
+import static org.apache.sysds.runtime.transform.encode.ColumnEncoderRecode.constructRecodeMapEntry;
+
 public class ColumnEncoderBagOfWords extends ColumnEncoder {
 
-	private HashMap<String, Integer> wordDictionary;
+	private HashMap<String, Long> wordDictionary;
 	public String regex = "\\s+"; // whitespace
 
 	protected ColumnEncoderBagOfWords(int colID) {
@@ -77,7 +79,7 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 
 	@Override
 	public void build(CacheBlock<?> in) {
-		int i = 0;
+		long i = 0;
 		for (int r = 0; r < in.getNumRows(); r++) {
 			String current = in.getString(r, this._colID - 1);
 			if(current != null)
@@ -92,26 +94,31 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 	protected void applyDense(CacheBlock<?> in, MatrixBlock out, int outputCol, int rowStart, int blk){
 		for (int r = rowStart; r < Math.max(in.getNumRows(), rowStart + blk); r++) {
 			String current = in.getString(r, this._colID - 1);
-			HashMap<String, Integer> counter = new HashMap<>();
+			HashMap<String, Long> counter = new HashMap<>();
 			for (String word : current.split(regex))
 				if (!word.isEmpty()) {
-					Integer old = counter.getOrDefault(word, 0);
+					Long old = counter.getOrDefault(word, 0L);
 					counter.put(word, old + 1);
 				}
 			for (String word : counter.keySet()) {
-				int c = this._colID - 1 + wordDictionary.get(word);
-				out.set(r, c, counter.get(word));
+				long c = this._colID - 1 + wordDictionary.get(word);
+				out.set(r, (int) c, counter.get(word));
 			}
 		}
 	}
 
 	@Override
 	public void allocateMetaData(FrameBlock meta) {
-
+		meta.ensureAllocatedColumns(this.getDomainSize());
 	}
 
 	@Override
 	public FrameBlock getMetaData(FrameBlock out) {
+		int rowID = 0;
+		StringBuilder sb = new StringBuilder();
+		for(Map.Entry<String, Long> e : this.wordDictionary.entrySet()) {
+			out.set(rowID++, _colID - 1, constructRecodeMapEntry(e.getKey(), e.getValue(), sb));
+		}
 		return out;
 	}
 

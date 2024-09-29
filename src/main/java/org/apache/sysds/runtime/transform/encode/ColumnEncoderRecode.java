@@ -76,7 +76,7 @@ public class ColumnEncoderRecode extends ColumnEncoder {
 		return constructRecodeMapEntry(token, code, sb);
 	}
 
-	private static String constructRecodeMapEntry(Object token, Long code, StringBuilder sb) {
+	public static String constructRecodeMapEntry(Object token, Long code, StringBuilder sb) {
 		sb.setLength(0); // reset reused string builder
 		return sb.append(token).append(Lop.DATATYPE_PREFIX).append(code.longValue()).toString();
 	}

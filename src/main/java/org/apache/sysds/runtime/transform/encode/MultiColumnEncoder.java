@@ -167,6 +167,7 @@ public class MultiColumnEncoder implements Encoder {
 		List<DependencyTask<?>> applyTAgg = null;
 		Map<Integer[], Integer[]> depMap = new HashMap<>();
 		boolean hasDC = getColumnEncoders(ColumnEncoderDummycode.class).size() > 0;
+		boolean hasBOW = getColumnEncoders(ColumnEncoderBagOfWords.class).size() > 0;
 		boolean applyOffsetDep = false;
 		boolean independentUpdateDC = false;
 		_meta = new FrameBlock(in.getNumColumns(), ValueType.STRING);
@@ -178,9 +179,11 @@ public class MultiColumnEncoder implements Encoder {
 			// Create the build tasks
 			List<DependencyTask<?>> buildTasks = e.getBuildTasks(in);
 			tasks.addAll(buildTasks);
+			boolean compositeHasDC = e.hasEncoder(ColumnEncoderDummycode.class);
+			boolean compositeHasBOW = e.hasEncoder(ColumnEncoderBagOfWords.class);
 			if(buildTasks.size() > 0) {
 				// Check if any Build independent UpdateDC task (Bin+DC, FH+DC)
-				if (e.hasEncoder(ColumnEncoderDummycode.class) 
+				if (compositeHasDC
 					&& buildTasks.size() > 1  //filter out FH
 					&& !buildTasks.get(buildTasks.size()-2).hasDependency(buildTasks.get(buildTasks.size()-1)))
 						independentUpdateDC = true;
@@ -203,7 +206,7 @@ public class MultiColumnEncoder implements Encoder {
 						new Integer[] {tasks.size() - 1, tasks.size()});           //Build/UpdateDC
 				}
 				// AllocMetaTask never depends on the UpdateDC task
-				if (e.hasEncoder(ColumnEncoderDummycode.class) && buildTasks.size() > 1)
+				if (compositeHasDC && buildTasks.size() > 1)
 					depMap.put(new Integer[] {1, 2},                               //AllocMetaTask (2nd task)
 						new Integer[] {tasks.size() - 2, tasks.size()-1});         //BuildTask
 				else
@@ -220,13 +223,13 @@ public class MultiColumnEncoder implements Encoder {
 					new Integer[] {0, 1});                                     //Allocation task (1st task)
 			ApplyTasksWrapperTask applyTaskWrapper = new ApplyTasksWrapperTask(e, in, out, pool);
 
-			if(e.hasEncoder(ColumnEncoderDummycode.class) || e.hasEncoder(ColumnEncoderBagOfWords.class)) {
+			if(compositeHasDC || compositeHasBOW) {
 				// Allocation depends on build if DC or BOW is in the list.
 				// Note, DC is the only encoder that changes dimensionality
 				depMap.put(new Integer[]{0, 1},                               //Allocation task (1st task)
 						new Integer[]{tasks.size() - 1, tasks.size()});       //BuildTask
 			}
-			if(e.hasEncoder(ColumnEncoderDummycode.class)){
+			if(compositeHasDC || compositeHasBOW){
 				// UpdateOutputColTask, that sets the starting offsets of the DC columns,
 				// depends on the Build completion tasks
 				depMap.put(new Integer[] {-2, -1},                             //UpdateOutputColTask (last task) 
@@ -235,7 +238,7 @@ public class MultiColumnEncoder implements Encoder {
 				applyOffsetDep = true;
 			}
 
-			if(hasDC && applyOffsetDep) {
+			if((hasDC || hasBOW) && applyOffsetDep) {
 				// Apply tasks depend on UpdateOutputColTask
 				depMap.put(new Integer[] {tasks.size(), tasks.size() + 1},     //ApplyTask 
 						new Integer[] {-2, -1});                               //UpdateOutputColTask (last task)
@@ -251,7 +254,7 @@ public class MultiColumnEncoder implements Encoder {
 			// Create the getMetadata task
 			tasks.add(DependencyThreadPool.createDependencyTask(new ColumnMetaDataTask<ColumnEncoder>(e, _meta)));
 		}
-		if(hasDC)
+		if(hasDC || hasBOW)
 			// Create the last task, UpdateOutputColTask
 			tasks.add(DependencyThreadPool.createDependencyTask(new UpdateOutputColTask(this, applyTAgg)));
 
@@ -481,6 +484,7 @@ public class MultiColumnEncoder implements Encoder {
 		// Reduce #build blocks for the recoders if all don't fit in memory
 		int rcdNumBuildBlks = numBlocks[0];
 		if (numBlocks[0] > 1 && recodeEncoders.size() > 0) {
+			//TODO BOW
 			// Estimate recode map sizes
 			estimateRCMapSize(in, recodeEncoders);
 			// Memory budget for maps = 70% of heap - sizeof(input)
@@ -1260,9 +1264,15 @@ public class MultiColumnEncoder implements Encoder {
 					currentCol = nonOffsetCol;
 					currentOffset = _encoder._columnEncoders.subList(0, nonOffsetCol).stream().mapToInt(e -> {
 						ColumnEncoderDummycode dc = e.getEncoder(ColumnEncoderDummycode.class);
-						if(dc == null)
+						ColumnEncoderBagOfWords bow = e.getEncoder(ColumnEncoderBagOfWords.class);
+						if(dc != null)
+							return dc._domainSize - 1;
+						else if(bow != null)
+							return bow.getDomainSize() - 1;
+						else
 							return 0;
-						return dc._domainSize - 1;
+
+
 					}).sum();
 				}
 				((ApplyTasksWrapperTask) dtask).setOffset(currentOffset);
