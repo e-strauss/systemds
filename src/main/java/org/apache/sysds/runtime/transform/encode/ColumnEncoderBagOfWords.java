@@ -20,34 +20,83 @@
 package org.apache.sysds.runtime.transform.encode;
 
 import org.apache.commons.lang3.NotImplementedException;
+import org.apache.sysds.runtime.DMLRuntimeException;
 import org.apache.sysds.runtime.controlprogram.caching.CacheBlock;
+import org.apache.sysds.runtime.data.SparseBlock;
+import org.apache.sysds.runtime.data.SparseBlockCSR;
 import org.apache.sysds.runtime.frame.data.FrameBlock;
 import org.apache.sysds.runtime.matrix.data.MatrixBlock;
-import org.apache.sysds.runtime.util.DependencyTask;
-import org.apache.sysds.runtime.util.DependencyThreadPool;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.regex.Pattern;
 
 import static org.apache.sysds.runtime.transform.encode.ColumnEncoderRecode.constructRecodeMapEntry;
+import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
 
 public class ColumnEncoderBagOfWords extends ColumnEncoder {
 
-	private HashMap<String, Long> wordDictionary;
-	public String regex = "\\s+"; // whitespace
+	public static int NUM_SAMPLES_MAP_ESTIMATION = 100;
+	protected
+	int[] nnzPerRow;
+	private static final Pattern STOP_CHAR_PATTERN = Pattern.compile("[^a-zA-Z0-9\\s]");
+	private HashMap<String, Long> tokenDictionary;
+	protected String seperatorRegex = "\\s+"; // whitespace
+	protected boolean caseSensitive = false;
+	protected long nnz = 0;
 
 	protected ColumnEncoderBagOfWords(int colID) {
 		super(colID);
-		wordDictionary = new HashMap<>();
+		tokenDictionary = new HashMap<>();
 	}
 
     public ColumnEncoderBagOfWords() {
         super(-1);
     }
 
-    @Override
+	public void computeMapSizeEstimate(CacheBlock<?> in, int[] sampleIndices) {
+		// Skip if estimate is already calculated
+		if (getEstMetaSize() != 0)
+			return;
+
+		// Find the frequencies of distinct values in the sample after tokenization
+		HashMap<String, Integer> distinctFreq = new HashMap<>();
+		long totSize = 0;
+		final int max_index = Math.min(ColumnEncoderBagOfWords.NUM_SAMPLES_MAP_ESTIMATION, sampleIndices.length);
+		int totalNumWords = 0;
+		for (int i = 0; i < max_index; i++) {
+			int sind = sampleIndices[i];
+			String current = in.getString(sind, this._colID - 1);
+			if(current != null)
+				for(String word : tokenize(current))
+					if(!word.isEmpty()){
+						if (distinctFreq.containsKey(word))
+							distinctFreq.put(word, distinctFreq.get(word) + 1);
+						else {
+							distinctFreq.put(word, 1);
+							// Maintain total size of the keys
+							totSize += (word.length() * 2L + 16); //sizeof(String) = len(chars) + header
+						}
+						totalNumWords++;
+					}
+		}
+
+		estimateDistinctTokens(sampleIndices.length, distinctFreq, totalNumWords, totSize);
+	}
+
+	@NotNull
+	private String[] tokenize(String current) {
+		// filter for characters that match: a-z, A-Z, 0-9
+		current = current.replaceAll("'"," ");
+		current = STOP_CHAR_PATTERN.matcher(this.caseSensitive ? current : current.toLowerCase())
+				.replaceAll("");
+		return current.split(seperatorRegex);
+	}
+
+	@Override
 	public int getDomainSize(){
-		return wordDictionary.size();
+		return tokenDictionary.size();
 	}
 
 	@Override
@@ -65,12 +114,6 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 		return TransformType.BAG_OF_WORDS;
 	}
 
-	public List<DependencyTask<?>> getBuildTasks(CacheBlock<?> in){
-		List<Callable<Object>> tasks = new ArrayList<>();
-		tasks.add(getBuildTask(in));
-		return DependencyThreadPool.createDependencyTasks(tasks, null);
-	}
-
 
 
 	public Callable<Object> getBuildTask(CacheBlock<?> in) {
@@ -80,31 +123,91 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 	@Override
 	public void build(CacheBlock<?> in) {
 		long i = 0;
+		this.nnz = 0;
+		nnzPerRow = new int[in.getNumRows()];
+		HashSet<String> current_dictionary;
 		for (int r = 0; r < in.getNumRows(); r++) {
+			current_dictionary = new HashSet<>();
 			String current = in.getString(r, this._colID - 1);
 			if(current != null)
-				for(String word : current.split(regex))
-					if(!word.isEmpty())
-						if(!this.wordDictionary.containsKey(word))
-							this.wordDictionary.put(word, i++);
+				for(String word : tokenize(current))
+					if(!word.isEmpty()){
+						if(!this.tokenDictionary.containsKey(word))
+							this.tokenDictionary.put(word, i++);
+						current_dictionary.add(word);
+					}
+			this.nnzPerRow[r] = current_dictionary.size();
+			this.nnz += current_dictionary.size();
+//			if(current_dictionary.size() < 10){
+//				System.out.println(Arrays.toString(current_dictionary.toArray()) + " : " + current);
+//			}
+		}
+		if(i > Integer.MAX_VALUE)
+			throw new DMLRuntimeException("Token Dictionary of the BagOfWords Encoder on Col [" + this._colID +
+					"] exceeds the maximum number of output columns");
+	}
+
+	protected void applySparse(CacheBlock<?> in, MatrixBlock out, int outputCol, int rowStart, int blk) {
+		boolean mcsr = MatrixBlock.DEFAULT_SPARSEBLOCK == SparseBlock.Type.MCSR;
+		mcsr = false; // force CSR for transformencode
+		ArrayList<Integer> sparseRowsWZeros = null;
+		int index = _colID - 1;
+		for(int r = rowStart; r < getEndIndex(in.getNumRows(), rowStart, blk); r++) {
+			if(mcsr) {
+				throw new NotImplementedException();
+			}
+			else { // csr
+				HashMap<String, Long> counter = countTokenAppearances(in, r);
+				SparseBlockCSR csrblock = (SparseBlockCSR) out.getSparseBlock();
+				int rptr[] = csrblock.rowPointers();
+
+				for (Map.Entry<String, Long> entry : counter.entrySet()) {
+					String word = entry.getKey();
+					Long count = entry.getValue();
+					long c = outputCol - 1 + tokenDictionary.get(word);
+				}
+				double val = csrblock.values()[rptr[r] + index];
+				if(Double.isNaN(val)) {
+					if(sparseRowsWZeros == null)
+						sparseRowsWZeros = new ArrayList<>();
+					sparseRowsWZeros.add(r);
+					csrblock.values()[rptr[r] + index] = 0; // test
+					continue;
+				}
+				// Manually fill the column-indexes and values array
+				int nCol = outputCol + (int) val - 1;
+				csrblock.indexes()[rptr[r] + index] = nCol;
+				csrblock.values()[rptr[r] + index] = 1;
+			}
+		}
+		if(sparseRowsWZeros != null) {
+			addSparseRowsWZeros(sparseRowsWZeros);
 		}
 	}
 
 	@Override
 	protected void applyDense(CacheBlock<?> in, MatrixBlock out, int outputCol, int rowStart, int blk){
 		for (int r = rowStart; r < Math.max(in.getNumRows(), rowStart + blk); r++) {
-			String current = in.getString(r, this._colID - 1);
-			HashMap<String, Long> counter = new HashMap<>();
-			for (String word : current.split(regex))
-				if (!word.isEmpty()) {
-					Long old = counter.getOrDefault(word, 0L);
-					counter.put(word, old + 1);
-				}
-			for (String word : counter.keySet()) {
-				long c = this._colID - 1 + wordDictionary.get(word);
-				out.set(r, (int) c, counter.get(word));
+			HashMap<String, Long> counter = countTokenAppearances(in, r);
+			for (Map.Entry<String, Long> entry : counter.entrySet()) {
+				String word = entry.getKey();
+				Long count = entry.getValue();
+				long c = this._colID - 1 + tokenDictionary.get(word);
+				out.set(r, (int) c, count);
 			}
 		}
+	}
+
+	@NotNull
+	private HashMap<String, Long> countTokenAppearances(CacheBlock<?> in, int r) {
+		String current = in.getString(r, this._colID - 1);
+		HashMap<String, Long> counter = new HashMap<>();
+		for (String word : tokenize(current))
+			if (!word.isEmpty()) {
+				Long old = counter.getOrDefault(word, 0L);
+				counter.put(word, old + 1);
+			}
+		return counter;
 	}
 
 	@Override
@@ -116,7 +219,7 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 	public FrameBlock getMetaData(FrameBlock out) {
 		int rowID = 0;
 		StringBuilder sb = new StringBuilder();
-		for(Map.Entry<String, Long> e : this.wordDictionary.entrySet()) {
+		for(Map.Entry<String, Long> e : this.tokenDictionary.entrySet()) {
 			out.set(rowID++, _colID - 1, constructRecodeMapEntry(e.getKey(), e.getValue(), sb));
 		}
 		return out;

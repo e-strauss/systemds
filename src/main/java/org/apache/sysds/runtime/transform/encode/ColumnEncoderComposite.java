@@ -51,6 +51,7 @@ public class ColumnEncoderComposite extends ColumnEncoder {
 
 	private List<ColumnEncoder> _columnEncoders = null;
 	private FrameBlock _meta = null;
+	private long avgEntrySize = 0L;
 
 	// map to keep track of which encoder has how many build tasks
 	//private Map<ColumnEncoder, Integer> _partialBuildTaskMap;
@@ -375,21 +376,29 @@ public class ColumnEncoderComposite extends ColumnEncoder {
 		for (ColumnEncoder e : _columnEncoders)
 			if (e.getClass().equals(ColumnEncoderRecode.class)
 				|| e.getClass().equals(ColumnEncoderDummycode.class)
-				|| e.getClass().equals(ColumnEncoderBin.class))
+				|| e.getClass().equals(ColumnEncoderBin.class)
+				|| e instanceof ColumnEncoderBagOfWords)
 				return true;
 		return false;
 	}
 
-	public void computeRCDMapSizeEstimate(CacheBlock<?> in, int[] sampleIndices) {
+	public void computeMapSizeEstimate(CacheBlock<?> in, int[] sampleIndices) {
 		int estNumDist = 0;
-		for (ColumnEncoder e : _columnEncoders)
-			if (e.getClass().equals(ColumnEncoderRecode.class)) {
-				((ColumnEncoderRecode) e).computeRCDMapSizeEstimate(in, sampleIndices);
+		for (ColumnEncoder e : _columnEncoders){
+			if (e.getClass().equals(ColumnEncoderRecode.class) || e.getClass().equals(ColumnEncoderBagOfWords.class)) {
+				e.computeMapSizeEstimate(in, sampleIndices);
 				estNumDist = e.getEstNumDistincts();
+				this.avgEntrySize = e.avgEntrySize;
 			}
+		}
 		long totEstSize = _columnEncoders.stream().mapToLong(ColumnEncoder::getEstMetaSize).sum();
 		setEstMetaSize(totEstSize);
 		setEstNumDistincts(estNumDist);
+
+	}
+
+	public long getAvgEntrySize(){
+		return this.avgEntrySize;
 	}
 
 	public void setNumPartitions(int nBuild, int nApply) {

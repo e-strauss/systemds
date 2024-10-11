@@ -39,6 +39,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.sysds.api.DMLScript;
 import org.apache.sysds.runtime.DMLRuntimeException;
+import org.apache.sysds.runtime.compress.estim.sample.SampleEstimatorFactory;
 import org.apache.sysds.runtime.controlprogram.caching.CacheBlock;
 import org.apache.sysds.runtime.data.DenseBlock;
 import org.apache.sysds.runtime.data.SparseBlock;
@@ -65,6 +66,7 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 	protected int _estNumDistincts = 0;
 	protected int _nBuildPartitions = 0;
 	protected int _nApplyPartitions = 0;
+	protected long avgEntrySize = 0;
 
 	//Override in ColumnEncoderWordEmbedding
 	public void initEmbeddings(MatrixBlock embeddings){
@@ -339,6 +341,27 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 		return _estNumDistincts;
 	}
 
+	public void computeMapSizeEstimate(CacheBlock<?> in, int[] sampleIndices) {
+		throw new DMLRuntimeException(this + " does not need map size estimation");
+	}
+
+	protected void estimateDistinctTokens(int numSamples, HashMap<String, Integer> distinctFreq,
+										  int totNumTokens, long totSize) {
+		// Estimate total #distincts using Hass and Stokes estimator
+		int[] freq = distinctFreq.values().stream().mapToInt(v -> v).toArray();
+		int estDistCount = SampleEstimatorFactory.distinctCount(freq, totNumTokens,
+				numSamples, SampleEstimatorFactory.EstimationType.HassAndStokes);
+		setEstNumDistincts(estDistCount);
+
+		// Compute total size estimates for each partial recode map
+		// We assume each partial map contains all distinct values and have the same size
+		long avgKeySize = totSize / distinctFreq.size();
+		long valSize = 16L; //sizeof(Long) = 8 + header
+		this.avgEntrySize = avgKeySize + valSize;
+		long estMapSize = estDistCount * avgEntrySize;
+		setEstMetaSize(estMapSize);
+	}
+
 	@Override
 	public int compareTo(ColumnEncoder o) {
 		return Integer.compare(getEncoderType(this), getEncoderType(o));
@@ -388,7 +411,7 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 		List<Callable<Object>> tasks = new ArrayList<>();
 		List<List<? extends Callable<?>>> dep = null;
 		//for now single threaded apply for bag of words
-		int[] blockSizes =  (this instanceof ColumnEncoderBagOfWords) ? new int[]{in.getNumRows()} : getBlockSizes(in.getNumRows(), _nApplyPartitions);
+		int[] blockSizes = getBlockSizes(in.getNumRows(), _nApplyPartitions);
 		for(int startRow = 0, i = 0; i < blockSizes.length; startRow+=blockSizes[i], i++){
 			if(out.isInSparseFormat())
 				tasks.add(getSparseTask(in, out, outputCol, startRow, blockSizes[i]));

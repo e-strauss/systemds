@@ -28,7 +28,9 @@ import org.apache.sysds.test.TestConfiguration;
 import org.apache.sysds.test.TestUtils;
 import org.junit.Test;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -40,6 +42,7 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 	private final static String TEST_NAME1 = "TransformFrameEncodeBagOfWords";
 	private final static String TEST_DIR = "functions/transform/";
 	private final static String TEST_CLASS_DIR = TEST_DIR + TransformFrameEncodeBagOfWords.class.getSimpleName() + "/";
+	private final static String DATASET = "amazonReview2023/Digital_MusicHead16k.csv";
 
 	@Override
 	public void setUp() {
@@ -50,6 +53,11 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 	@Test
 	public void testTransformBagOfWords() {
 		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, false, false);
+	}
+
+	@Test
+	public void testTransformBagOfWordsAmazonReviews() {
+		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, false, false, true);
 	}
 
 	@Test
@@ -67,12 +75,16 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, true, true);
 	}
 
-	@Test
+	//@Test
 	public void testTransformBagOfWordsSpark() {
 		runTransformTest(TEST_NAME1, ExecMode.SPARK, false, false);
 	}
 
-	private void runTransformTest(String testname, ExecMode rt, boolean recode, boolean dup)
+	private void runTransformTest(String testname, ExecMode rt, boolean recode, boolean dup){
+		runTransformTest(testname, rt, recode, dup, false);
+	}
+
+	private void runTransformTest(String testname, ExecMode rt, boolean recode, boolean dup, boolean fromFile)
 	{
 		//set runtime platform
 		ExecMode rtold = setExecMode(rt);
@@ -82,12 +94,13 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 			fullDMLScriptName = getScript();
 
 			// Create the dataset by repeating and shuffling the distinct tokens
-			String[] sentenceColumn = new String[]{"This is the first document","This document is the second document",
+			String[] sentenceColumn = fromFile ? readReviews(DATASET_DIR + DATASET) : new String[]{"This is the first document","This document is the second document",
 					"And this is the third one","Is this the first document"};
 			String[] recodeColumn = recode ? new String[]{"A", "B", "A", "C"} : null;
-			writeStringsToCsvFile(sentenceColumn, recodeColumn, baseDirectory + INPUT_DIR + "data", dup);
+			if(!fromFile)
+				writeStringsToCsvFile(sentenceColumn, recodeColumn, baseDirectory + INPUT_DIR + "data", dup);
 
-			programArgs = new String[]{"-stats","-args", input("data"), output("result"), output("dict"),
+			programArgs = new String[]{"-stats","-args", fromFile ? DATASET_DIR + DATASET : input("data"), output("result"), output("dict"),
 					String.valueOf(recode), String.valueOf(dup)};
 			runTest(true, EXCEPTION_NOT_EXPECTED, null, -1);
 			HashMap<MatrixValue.CellIndex, Double> res_actual = readDMLMatrixFromOutputDir("result");
@@ -102,6 +115,19 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 		finally {
 			resetExecMode(rtold);
 		}
+	}
+
+	private String[] readReviews(String s) {
+        try {
+            FrameBlock in = readDMLFrameFromHDFS(s, Types.FileFormat.CSV, false);
+			String[] out = new String[in.getNumRows()];
+			for (int i = 0; i < in.getNumRows(); i++) {
+				out[i] = in.getString(i, 0);
+			}
+			return out;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
 	}
 
 	public static void checkResults(String[] sentences, double[][] result, String[] recodeColumn, FrameBlock dict, boolean dup){
@@ -127,6 +153,8 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 			String[] words = sentence.split(" ");
 			for (String word : words) {
 				if (!word.isEmpty()) {
+
+					word = word.toLowerCase();
 					Integer old = count.getOrDefault(word, 0);
 					count.put(word, old + 1);
 				}

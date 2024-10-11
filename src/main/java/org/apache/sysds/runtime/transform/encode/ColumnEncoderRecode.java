@@ -129,7 +129,7 @@ public class ColumnEncoderRecode extends ColumnEncoder {
 		return _rcdMap.getOrDefault(key, -1L);
 	}
 
-	public void computeRCDMapSizeEstimate(CacheBlock<?> in, int[] sampleIndices) {
+	public void computeMapSizeEstimate(CacheBlock<?> in, int[] sampleIndices) {
 		if (getEstMetaSize() != 0)
 			return;
 
@@ -150,18 +150,7 @@ public class ColumnEncoderRecode extends ColumnEncoder {
 			}
 		}
 
-		// Estimate total #distincts using Hass and Stokes estimator
-		int[] freq = distinctFreq.values().stream().mapToInt(v -> v).toArray();
-		int estDistCount = SampleEstimatorFactory.distinctCount(freq, in.getNumRows(),
-			sampleIndices.length, SampleEstimatorFactory.EstimationType.HassAndStokes);
-		setEstNumDistincts(estDistCount);
-
-		// Compute total size estimates for each partial recode map
-		// We assume each partial map contains all distinct values and have the same size
-		long avgKeySize = totSize / distinctFreq.size();
-		long valSize = 16L; //sizeof(Long) = 8 + header
-		long estMapSize = estDistCount * (avgKeySize + valSize);
-		setEstMetaSize(estMapSize);
+		estimateDistinctTokens(sampleIndices.length, distinctFreq, in.getNumRows(), totSize);
 	}
 
 	@Override
