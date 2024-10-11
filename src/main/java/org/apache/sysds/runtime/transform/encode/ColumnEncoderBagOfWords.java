@@ -192,7 +192,7 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 			for (Map.Entry<String, Long> entry : counter.entrySet()) {
 				String word = entry.getKey();
 				Long count = entry.getValue();
-				long c = this._colID - 1 + tokenDictionary.get(word);
+				long c = outputCol + tokenDictionary.get(word);
 				out.set(r, (int) c, count);
 			}
 		}

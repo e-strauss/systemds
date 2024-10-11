@@ -107,7 +107,7 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 			double[][] result = TestUtils.convertHashMapToDoubleArray(res_actual);
 			System.out.println(baseDirectory);
 			FrameBlock dict_frame = readDMLFrameFromHDFS( "dict", Types.FileFormat.CSV);
-			checkResults(sentenceColumn, result, recodeColumn, dict_frame, dup);
+			checkResults(sentenceColumn, result, recodeColumn, dict_frame, dup ? 2 : 1);
 		}
 		catch(Exception ex) {
 			throw new RuntimeException(ex);
@@ -130,7 +130,8 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
         }
 	}
 
-	public static void checkResults(String[] sentences, double[][] result, String[] recodeColumn, FrameBlock dict, boolean dup){
+	public static void checkResults(String[] sentences, double[][] result, String[] recodeColumn, FrameBlock dict,
+									int duplicates){
 		HashMap<String, Integer> indices = new HashMap<>();
 		for (int i = 0; i < dict.getNumRows(); i++) {
 			String[] tuple = dict.getString(i, 0).split("\u00b7");
@@ -146,34 +147,43 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 				rcdMap.put(tuple[0], Integer.parseInt(tuple[1]));
 			}
 		}
-		int r = 0;
-		for (int i = 0; i < sentences.length; i++) {
-			String sentence = sentences[i];
+		for (int row = 0; row < sentences.length; row++) {
+			// build token dictionary once
+			String sentence = sentences[row];
 			HashMap<String, Integer> count = new HashMap<>();
 			String[] words = sentence.split(" ");
+			List<Integer> zeroIndices = new ArrayList<>();
+			for (int i = 0; i < indices.size(); i++) {
+				zeroIndices.add(i);
+			}
 			for (String word : words) {
 				if (!word.isEmpty()) {
-
 					word = word.toLowerCase();
 					Integer old = count.getOrDefault(word, 0);
 					count.put(word, old + 1);
+					zeroIndices.remove(indices.get(word));
 				}
 			}
 
-			// compare results: bag of words
-			for(Map.Entry<String, Integer> entry : count.entrySet()){
-				String word = entry.getKey();
-				int count_expected = entry.getValue();
-				int index = indices.get(word);
-				assert result[r][index] == count_expected;
+			// iterate through the results of the column encoders
+			int offset = 0;
+			for (int j = 0; j < duplicates; j++) {
+				// compare results: bag of words
+				for(Map.Entry<String, Integer> entry : count.entrySet()){
+					String word = entry.getKey();
+					int count_expected = entry.getValue();
+					int index = indices.get(word);
+					assert result[row][index + offset] == count_expected;
+				}
+				for(int zeroIndex : zeroIndices)
+					assert result[row][offset + zeroIndex] == 0;
+				offset += indices.size();
+				// recode:
+				if(recodeColumn != null){
+					assert result[row][offset] == rcdMap.get(recodeColumn[row]);
+					offset++;
+				}
 			}
-
-			int offset = indices.size();
-
-			// recode:
-			if(recodeColumn != null)
-				assert result[r][offset] == rcdMap.get(recodeColumn[r]);
-			r++;
 		}
 	}
 
