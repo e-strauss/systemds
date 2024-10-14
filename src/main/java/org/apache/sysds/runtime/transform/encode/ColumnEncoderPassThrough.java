@@ -160,13 +160,6 @@ public class ColumnEncoderPassThrough extends ColumnEncoder {
 	}
 
 	public static class PassThroughSparseApplyTask extends ColumnApplyTask<ColumnEncoderPassThrough>{
-
-
-		protected PassThroughSparseApplyTask(ColumnEncoderPassThrough encoder, CacheBlock<?> input,
-				MatrixBlock out, int outputCol) {
-			super(encoder, input, out, outputCol);
-		}
-
 		protected PassThroughSparseApplyTask(ColumnEncoderPassThrough encoder, 
 				CacheBlock<?> input, MatrixBlock out, int outputCol, int startRow, int blk) {
 			super(encoder, input, out, outputCol, startRow, blk);

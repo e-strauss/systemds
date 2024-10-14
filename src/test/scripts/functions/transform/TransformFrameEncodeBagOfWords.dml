@@ -47,6 +47,10 @@ if (as.boolean($4)) {
 
 #Data_enc = transformapply(target=Data, spec=jspec, meta=Meta);
 print(nrow(Data_enc) + " x " + ncol(Data_enc))
+#reduce nr rows for large input tests
+if(nrow(Data_enc) > 100){
+  Data_enc = Data_enc[1:100,]
+}
 print(toString(Data_enc))
 print(toString(Meta))
 print($3)

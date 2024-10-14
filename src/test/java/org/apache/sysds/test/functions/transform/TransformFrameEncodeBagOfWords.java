@@ -37,6 +37,8 @@ import java.nio.file.Paths;
 import java.nio.file.Files;
 import java.util.*;
 
+import static org.apache.sysds.runtime.transform.encode.ColumnEncoderBagOfWords.tokenize;
+
 public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 {
 	private final static String TEST_NAME1 = "TransformFrameEncodeBagOfWords";
@@ -94,20 +96,28 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 			fullDMLScriptName = getScript();
 
 			// Create the dataset by repeating and shuffling the distinct tokens
-			String[] sentenceColumn = fromFile ? readReviews(DATASET_DIR + DATASET) : new String[]{"This is the first document","This document is the second document",
+			String[] sentenceColumn = fromFile ? readReviews(DATASET_DIR + DATASET) : new String[]{"This is the " +
+					"first document","This document is the second document",
 					"And this is the third one","Is this the first document"};
 			String[] recodeColumn = recode ? new String[]{"A", "B", "A", "C"} : null;
 			if(!fromFile)
 				writeStringsToCsvFile(sentenceColumn, recodeColumn, baseDirectory + INPUT_DIR + "data", dup);
 
-			programArgs = new String[]{"-stats","-args", fromFile ? DATASET_DIR + DATASET : input("data"), output("result"), output("dict"),
+			programArgs = new String[]{"-stats","-args", fromFile ? DATASET_DIR + DATASET : input("data"),
+					output("result"), output("dict"),
 					String.valueOf(recode), String.valueOf(dup)};
 			runTest(true, EXCEPTION_NOT_EXPECTED, null, -1);
-			HashMap<MatrixValue.CellIndex, Double> res_actual = readDMLMatrixFromOutputDir("result");
-			double[][] result = TestUtils.convertHashMapToDoubleArray(res_actual);
-			System.out.println(baseDirectory);
+
 			FrameBlock dict_frame = readDMLFrameFromHDFS( "dict", Types.FileFormat.CSV);
+			int cols = recode? dict_frame.getNumRows() + 1 : dict_frame.getNumRows();
+			if(dup)
+				cols *= 2;
+			HashMap<MatrixValue.CellIndex, Double> res_actual = readDMLMatrixFromOutputDir("result");
+			double[][] result = TestUtils.convertHashMapToDoubleArray(res_actual, Math.min(sentenceColumn.length, 100),
+					cols);
+
 			checkResults(sentenceColumn, result, recodeColumn, dict_frame, dup ? 2 : 1);
+
 		}
 		catch(Exception ex) {
 			throw new RuntimeException(ex);
@@ -147,11 +157,12 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 				rcdMap.put(tuple[0], Integer.parseInt(tuple[1]));
 			}
 		}
-		for (int row = 0; row < sentences.length; row++) {
+		// only check the first 100 rows
+		for (int row = 0; row < Math.min(sentences.length, 100); row++) {
 			// build token dictionary once
 			String sentence = sentences[row];
 			HashMap<String, Integer> count = new HashMap<>();
-			String[] words = sentence.split(" ");
+			String[] words = tokenize(sentence, false,  "\\s+");
 			List<Integer> zeroIndices = new ArrayList<>();
 			for (int i = 0; i < indices.size(); i++) {
 				zeroIndices.add(i);

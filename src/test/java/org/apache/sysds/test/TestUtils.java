@@ -315,6 +315,8 @@ public class TestUtils {
 				int i = Integer.parseInt(st.nextToken());
 				int j = Integer.parseInt(st.nextToken());
 				double v = Double.parseDouble(st.nextToken());
+				if(i == 0 || j == 0)
+					System.out.println(line);
 				values.put(new CellIndex(i, j), v);
 			}
 			catch(Exception e){

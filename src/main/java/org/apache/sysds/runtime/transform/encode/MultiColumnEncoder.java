@@ -401,7 +401,7 @@ public class MultiColumnEncoder implements Encoder {
 		List<DependencyTask<?>> tasks = new ArrayList<>();
 		int offset = outputCol;
 		for(ColumnEncoderComposite e : _columnEncoders) {
-			tasks.addAll(e.getApplyTasks(in, out, e._colID - 1 + offset));
+			tasks.addAll(e.getApplyTasks(in, out, e._colID - 1 + offset, null));
 			offset = getOffset(offset, e);
 		}
 		return tasks;
@@ -421,7 +421,8 @@ public class MultiColumnEncoder implements Encoder {
 			if(APPLY_ENCODER_SEPARATE_STAGES) {
 				int offset = outputCol;
 				for (ColumnEncoderComposite e : _columnEncoders) {
-					pool.submitAllAndWait(e.getApplyTasks(in, out, e._colID - 1 + offset));
+					// for now bag of words is only used in encode
+					pool.submitAllAndWait(e.getApplyTasks(in, out, e._colID - 1 + offset, null));
 					offset = getOffset(offset, e);
 				}
 			} else
@@ -653,7 +654,6 @@ public class MultiColumnEncoder implements Encoder {
 				// Not using the set() methods to 1) avoid binary search and shifting, 
 				// 2) reduce thread contentions on the arrays
 				int[] rptr = csrblock.rowPointers();
-				//TODO: num of nnz != input.getNumColumns() for bag of words encoder
 				for (int i=0; i<rptr.length-1; i++) { //TODO: parallelize
 					int nnzPerRow = input.getNumColumns() - numBOW + nnzPerRowBOW[i];
 					rptr[i+1] = rptr[i] + nnzPerRow;
@@ -704,10 +704,10 @@ public class MultiColumnEncoder implements Encoder {
 						return l.stream();
 					}).collect(Collectors.toSet());
 
-			if(!indexSet.stream().allMatch(Objects::isNull)) {
-				for(Integer row : indexSet)
-					output.getSparseBlock().get(row).compact();
-			}
+		if(!indexSet.stream().allMatch(Objects::isNull)) {
+			for(Integer row : indexSet)
+				output.getSparseBlock().get(row).compact();
+		}
 
 		output.recomputeNonZeros();
 	}
@@ -1272,7 +1272,8 @@ public class MultiColumnEncoder implements Encoder {
 		private final MatrixBlock _out;
 		private final CacheBlock<?> _in;
 		/** Offset because of dummmy coding such that the column id is correct. */
-		private int _offset = -1; 
+		private int _offset = -1;
+		private int[] _sparseRowPointerOffsets = null;
 
 		private ApplyTasksWrapperTask(ColumnEncoder encoder, CacheBlock<?> in, 
 				MatrixBlock out, DependencyThreadPool pool) {
@@ -1284,7 +1285,7 @@ public class MultiColumnEncoder implements Encoder {
 
 		@Override
 		public List<DependencyTask<?>> getWrappedTasks() {
-			return _encoder.getApplyTasks(_in, _out, _encoder._colID - 1 + _offset);
+			return _encoder.getApplyTasks(_in, _out, _encoder._colID - 1 + _offset, _sparseRowPointerOffsets);
 		}
 
 		@Override
@@ -1299,6 +1300,10 @@ public class MultiColumnEncoder implements Encoder {
 
 		public void setOffset(int offset) {
 			_offset = offset;
+		}
+
+		public void setSparseRowPointerOffsets(int[] offsets) {
+			_sparseRowPointerOffsets = offsets;
 		}
 
 		@Override
@@ -1329,25 +1334,39 @@ public class MultiColumnEncoder implements Encoder {
 		public Object call() throws Exception {
 			int currentCol = -1;
 			int currentOffset = 0;
+			int[] sparseRowPointerOffsets = null;
 			for(DependencyTask<?> dtask : _applyTasksWrappers) {
+				((ApplyTasksWrapperTask) dtask).setOffset(currentOffset);
+				if(sparseRowPointerOffsets != null)
+					((ApplyTasksWrapperTask) dtask).setSparseRowPointerOffsets(sparseRowPointerOffsets.clone());
 				int nonOffsetCol = ((ApplyTasksWrapperTask) dtask)._encoder._colID - 1;
 				if(nonOffsetCol > currentCol) {
 					currentCol = nonOffsetCol;
-					currentOffset = _encoder._columnEncoders.subList(0, nonOffsetCol).stream().mapToInt(e -> {
-						ColumnEncoderDummycode dc = e.getEncoder(ColumnEncoderDummycode.class);
-						ColumnEncoderBagOfWords bow = e.getEncoder(ColumnEncoderBagOfWords.class);
-						if(dc != null)
-							return dc._domainSize - 1;
-						else if(bow != null)
-							return bow.getDomainSize() - 1;
+					ColumnEncoderComposite enc = _encoder._columnEncoders.get(nonOffsetCol);
+					if(enc.hasEncoder(ColumnEncoderDummycode.class))
+						currentOffset += enc.getEncoder(ColumnEncoderDummycode.class)._domainSize - 1;
+					else if (enc.hasEncoder(ColumnEncoderBagOfWords.class)) {
+						ColumnEncoderBagOfWords bow = enc.getEncoder(ColumnEncoderBagOfWords.class);
+						currentOffset += bow.getDomainSize() - 1;
+						if(sparseRowPointerOffsets == null)
+							sparseRowPointerOffsets = bow.nnzPerRow;
 						else
-							return 0;
+							for (int r = 0; r < sparseRowPointerOffsets.length; r++) {
+								sparseRowPointerOffsets[r] += bow.nnzPerRow[r] - 1;
+							}
+					}
 
-
-					}).sum();
+//					currentOffset = _encoder._columnEncoders.subList(0, nonOffsetCol).stream().mapToInt(e -> {
+//						ColumnEncoderDummycode dc = e.getEncoder(ColumnEncoderDummycode.class);
+//						ColumnEncoderBagOfWords bow = e.getEncoder(ColumnEncoderBagOfWords.class);
+//						if(dc != null)
+//							return dc._domainSize - 1;
+//						else if(bow != null)
+//							return bow.getDomainSize() - 1;
+//						else
+//							return 0;
+//					}).sum();
 				}
-				((ApplyTasksWrapperTask) dtask).setOffset(currentOffset);
-
 			}
 			return null;
 		}

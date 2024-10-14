@@ -62,6 +62,7 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 	private static final long serialVersionUID = 2299156350718979064L;
 	protected int _colID;
 	protected ArrayList<Integer> _sparseRowsWZeros = null;
+	protected int[] sparseRowPointerOffset = null;	// offsets created by bag of words encoders (multiple nnz)
 	protected long _estMetaSize = 0;
 	protected int _estNumDistincts = 0;
 	protected int _nBuildPartitions = 0;
@@ -157,6 +158,7 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 		for(int i = rowStart; i < rowEnd; i+=B) {
 			int lim = Math.min(i+B, rowEnd);
 			for (int ii=i; ii<lim; ii++) {
+				index += sparseRowPointerOffset != null ? sparseRowPointerOffset[ii] : 0;
 				if (mcsr) {
 					SparseRowVector row = (SparseRowVector) out.getSparseBlock().get(ii);
 					row.values()[index] = codes[ii-rowStart];
@@ -407,11 +409,12 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 	}
 
 
-	public List<DependencyTask<?>> getApplyTasks(CacheBlock<?> in, MatrixBlock out, int outputCol) {
+	public List<DependencyTask<?>> getApplyTasks(CacheBlock<?> in, MatrixBlock out, int outputCol, int[] sparseRowPointerOffsets) {
 		List<Callable<Object>> tasks = new ArrayList<>();
 		List<List<? extends Callable<?>>> dep = null;
 		//for now single threaded apply for bag of words
 		int[] blockSizes = getBlockSizes(in.getNumRows(), _nApplyPartitions);
+		this.sparseRowPointerOffset = out.isInSparseFormat() ? sparseRowPointerOffsets : null;
 		for(int startRow = 0, i = 0; i < blockSizes.length; startRow+=blockSizes[i], i++){
 			if(out.isInSparseFormat())
 				tasks.add(getSparseTask(in, out, outputCol, startRow, blockSizes[i]));

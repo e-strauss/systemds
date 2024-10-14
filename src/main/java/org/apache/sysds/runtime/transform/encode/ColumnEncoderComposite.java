@@ -121,17 +121,17 @@ public class ColumnEncoderComposite extends ColumnEncoder {
 	}
 
 	@Override
-	public List<DependencyTask<?>> getApplyTasks(CacheBlock<?> in, MatrixBlock out, int outputCol) {
+	public List<DependencyTask<?>> getApplyTasks(CacheBlock<?> in, MatrixBlock out, int outputCol, int[] sparseRowPointerOffsets) {
 		List<DependencyTask<?>> tasks = new ArrayList<>();
 		List<Integer> sizes = new ArrayList<>();
 		for(int i = 0; i < _columnEncoders.size(); i++) {
 			List<DependencyTask<?>> t;
 			if(i == 0) {
 				// 1. encoder writes data into MatrixBlock Column all others use this column for further encoding
-				t = _columnEncoders.get(i).getApplyTasks(in, out, outputCol);
+				t = _columnEncoders.get(i).getApplyTasks(in, out, outputCol, sparseRowPointerOffsets);
 			}
 			else {
-				t = _columnEncoders.get(i).getApplyTasks(out, out, outputCol);
+				t = _columnEncoders.get(i).getApplyTasks(out, out, outputCol, sparseRowPointerOffsets);
 			}
 			if(t == null)
 				continue;

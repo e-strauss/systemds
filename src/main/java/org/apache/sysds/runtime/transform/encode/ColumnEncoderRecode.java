@@ -367,11 +367,6 @@ public class ColumnEncoderRecode extends ColumnEncoder {
 	}
 
 	private static class RecodeSparseApplyTask extends ColumnApplyTask<ColumnEncoderRecode>{
-
-		public RecodeSparseApplyTask(ColumnEncoderRecode encoder, CacheBlock<?> input, MatrixBlock out, int outputCol) {
-			super(encoder, input, out, outputCol);
-		}
-
 		protected RecodeSparseApplyTask(ColumnEncoderRecode encoder, CacheBlock<?> input, MatrixBlock out,
 										int outputCol, int startRow, int blk) {
 			super(encoder, input, out, outputCol, startRow, blk);
