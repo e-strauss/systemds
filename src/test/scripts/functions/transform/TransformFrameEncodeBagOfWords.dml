@@ -43,16 +43,18 @@ if (as.boolean($4)) {
 #print(toString(Data_enc2))
 #print(toString(Meta2))
 
-[Data_enc, Meta] = transformencode(target=Data, spec=jspec);
-
+i = 0
+while(i < 20){
+  [Data_enc, Meta] = transformencode(target=Data, spec=jspec);
+  i = i + 1
+}
 #Data_enc = transformapply(target=Data, spec=jspec, meta=Meta);
 print(nrow(Data_enc) + " x " + ncol(Data_enc))
 #reduce nr rows for large input tests
 if(nrow(Data_enc) > 100){
   Data_enc = Data_enc[1:100,]
 }
-print(toString(Data_enc))
-print(toString(Meta))
-print($3)
+#print(toString(Data_enc))
+#print(toString(Meta))
 write(Data_enc, $2, format="text");
 write(Meta, $3, format="csv");

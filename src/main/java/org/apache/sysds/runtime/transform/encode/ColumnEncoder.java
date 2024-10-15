@@ -50,6 +50,7 @@ import org.apache.sysds.runtime.matrix.data.MatrixBlock;
 import org.apache.sysds.runtime.util.DependencyTask;
 import org.apache.sysds.runtime.util.DependencyThreadPool;
 import org.apache.sysds.utils.stats.TransformStatistics;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Base class for all transform encoders providing both a row and block interface for decoding frames to matrices.
@@ -105,6 +106,7 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 
 		if (DMLScript.STATISTICS){
 			long t = System.nanoTime()-t0;
+			//System.out.println(t / 1e9);
 			switch (this.getTransformType()){
 				case RECODE:
 					TransformStatistics.incRecodeApplyTime(t);
@@ -347,14 +349,19 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 		throw new DMLRuntimeException(this + " does not need map size estimation");
 	}
 
-	protected void estimateDistinctTokens(int numSamples, HashMap<String, Integer> distinctFreq,
+	protected void estimateDistinctTokens(int numSamples, @NotNull HashMap<String, Integer> distinctFreq,
 										  int totNumTokens, long totSize) {
+		//todo switch estimation to long
+
 		// Estimate total #distincts using Hass and Stokes estimator
 		int[] freq = distinctFreq.values().stream().mapToInt(v -> v).toArray();
 		int estDistCount = SampleEstimatorFactory.distinctCount(freq, totNumTokens,
 				numSamples, SampleEstimatorFactory.EstimationType.HassAndStokes);
 		setEstNumDistincts(estDistCount);
-
+//		System.out.println("num of words in the sample: " + numSamples);
+//		System.out.println("num of distinct words in the sample: " + distinctFreq.size());
+//		System.out.println("total word count estimation " + totNumTokens);
+//		System.out.println("distinct word count estimation " + estDistCount);
 		// Compute total size estimates for each partial recode map
 		// We assume each partial map contains all distinct values and have the same size
 		long avgKeySize = totSize / distinctFreq.size();

@@ -27,6 +27,7 @@ public class TransformStatistics {
 	//private static final LongAdder buildTime = new LongAdder();
 	private static final LongAdder recodeBuildTime = new LongAdder();
 	private static final LongAdder binningBuildTime = new LongAdder();
+	private static final LongAdder bowBuildTime = new LongAdder();
 	private static final LongAdder imputeBuildTime = new LongAdder();
 
 	//private static final LongAdder applyTime = new LongAdder();
@@ -99,6 +100,10 @@ public class TransformStatistics {
 		binningBuildTime.add(t);
 	}
 
+	public static void incBagOfWordsBuildTime(long t) {
+		bowBuildTime.add(t);
+	}
+
 	public static void incImputeBuildTime(long t) {
 		imputeBuildTime.add(t);
 	}
@@ -117,7 +122,7 @@ public class TransformStatistics {
 
 	public static long getEncodeBuildTime() {
 		return binningBuildTime.longValue() + imputeBuildTime.longValue() +
-				recodeBuildTime.longValue();
+				recodeBuildTime.longValue() + bowBuildTime.longValue();
 	}
 
 	public static long getEncodeApplyTime() {
@@ -134,11 +139,14 @@ public class TransformStatistics {
 		recodeBuildTime.reset();
 		binningBuildTime.reset();
 		imputeBuildTime.reset();
+		bowBuildTime.reset();
 		// applyTime.reset();
 		recodeApplyTime.reset();
 		dummyCodeApplyTime.reset();
 		passThroughApplyTime.reset();
 		featureHashingApplyTime.reset();
+		bagOfWordsApplyTime.reset();
+		wordEmbeddingApplyTime.reset();
 		binningApplyTime.reset();
 		UDFApplyTime.reset();
 		omitApplyTime.reset();
@@ -164,6 +172,9 @@ public class TransformStatistics {
 			if(imputeBuildTime.longValue() > 0)
 				sb.append("\tImpute build time:\t").append(String.format("%.3f",
 					imputeBuildTime.longValue()*1e-9)).append(" sec.\n");
+			if(bowBuildTime.longValue() > 0)
+				sb.append("\tBagOfWords build time:\t").append(String.format("%.3f",
+						bowBuildTime.longValue()*1e-9)).append(" sec.\n");
 
 			sb.append("TransformEncode apply time:\t").append(String.format("%.3f",
 				getEncodeApplyTime()*1e-9)).append(" sec.\n");
@@ -180,7 +191,7 @@ public class TransformStatistics {
 				sb.append("\tWordEmbedding apply time:\t").append(String.format("%.3f",
 						wordEmbeddingApplyTime.longValue()*1e-9)).append(" sec.\n");
 			if(bagOfWordsApplyTime.longValue() > 0)
-				sb.append("\tWordEmbedding apply time:\t").append(String.format("%.3f",
+				sb.append("\tBagOfWords apply time:\t").append(String.format("%.3f",
 						bagOfWordsApplyTime.longValue()*1e-9)).append(" sec.\n");
 			if(featureHashingApplyTime.longValue() > 0)
 				sb.append("\tHashing apply time:\t").append(String.format("%.3f",
