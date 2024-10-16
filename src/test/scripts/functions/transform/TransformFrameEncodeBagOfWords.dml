@@ -44,10 +44,18 @@ if (as.boolean($4)) {
 #print(toString(Meta2))
 
 i = 0
+total = 0
+j = 0
 while(i < 20){
+  t0 = time()
   [Data_enc, Meta] = transformencode(target=Data, spec=jspec);
+  if(i > 10){
+    total = total + time() - t0
+    j = j + 1
+  }
   i = i + 1
 }
+print(total/1000000000 / j)
 #Data_enc = transformapply(target=Data, spec=jspec, meta=Meta);
 print(nrow(Data_enc) + " x " + ncol(Data_enc))
 #reduce nr rows for large input tests

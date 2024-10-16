@@ -88,7 +88,7 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 
 	@Test
 	public void testSort(){
-		int len1 = 100;
+		int len1 = 150;
 		int len2 = 700000;
 		Pair[][] data = new Pair[len2][len1];
 		Random random = new Random(7);

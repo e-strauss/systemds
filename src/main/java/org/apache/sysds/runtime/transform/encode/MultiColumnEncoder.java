@@ -124,7 +124,8 @@ public class MultiColumnEncoder implements Encoder {
 				for (ColumnEncoderComposite lenc : _columnEncoders) {
 					if(lenc.hasEncoder(ColumnEncoderBagOfWords.class)){
 						ColumnEncoderBagOfWords bow = lenc.getEncoder(ColumnEncoderBagOfWords.class);
-						System.out.println("BOW Apply time: " + (bow.accurateApplyEnd - bow.accurateApplyStart) / 1e9);
+						//System.out.println("BOW Apply time: " + (bow.accurateApplyEnd - bow.accurateApplyStart) / 1e9);
+						System.out.println("BOW Build time: " + (bow.accurateBuildEnd - bow.accurateBuildStart) / 1e9);
 					}
 				}
 				return out;
@@ -488,7 +489,7 @@ public class MultiColumnEncoder implements Encoder {
 			numBlocks[1] = Math.round(((float)nThread*2)/nApply);
 
 		int bowNumBuildBlks = numBlocks[0];
-		int bowNumApplyBlks = numBlocks[1]; // larger computational overhead per row
+		int bowNumApplyBlks = numBlocks[1];
 
 		// Reduce #blocks if #rows per partition is too small
 		// while (numBlocks[0] > 1 && nRow/numBlocks[0] < minNumRows)
@@ -501,7 +502,7 @@ public class MultiColumnEncoder implements Encoder {
 		int rcdNumBuildBlks = numBlocks[0];
 
 		// Use a smaller minNumRows for BOW encoders because of a larger computational overhead per row
-		optimalPartitions = Math.max(1, nRow / (minNumRows / 1));
+		optimalPartitions = Math.max(1, nRow / (minNumRows / 16));
 		bowNumBuildBlks = Math.min(bowNumBuildBlks, optimalPartitions);
 		bowNumApplyBlks = Math.min(bowNumApplyBlks, optimalPartitions);
 
@@ -511,9 +512,10 @@ public class MultiColumnEncoder implements Encoder {
 		}
 		// BOW: Reduce #build blocks for all encoders if all don't fit in memory
 		else if (bowNumBuildBlks > 1 && recodeEncoders.isEmpty() && !bowEncoders.isEmpty()) {
-			bowNumBuildBlks = getNumBuildBlksMemorySafe(in, bowEncoders, bowNumBuildBlks, false);
+			//bowNumBuildBlks = getNumBuildBlksMemorySafe(in, bowEncoders, bowNumBuildBlks, false);
 			//bowNumApplyBlks = bowNumBuildBlks;
-			bowNumBuildBlks = 1;
+			bowNumBuildBlks = 8;
+			bowNumApplyBlks = 16;
 
 			// Estimate map sizes, fused with other encoders (bag_of_words)
 			//bowNumBuildBlks = getNumBuildBlksMemorySafe(in, bowEncoders, bowNumBuildBlks, false);
