@@ -22,14 +22,7 @@ package org.apache.sysds.runtime.transform.encode;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -39,7 +32,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.sysds.api.DMLScript;
@@ -62,7 +54,11 @@ import org.apache.sysds.runtime.util.DependencyTask;
 import org.apache.sysds.runtime.util.DependencyThreadPool;
 import org.apache.sysds.runtime.util.DependencyWrapperTask;
 import org.apache.sysds.runtime.util.IndexRange;
+import org.apache.sysds.utils.stats.InfrastructureAnalyzer;
 import org.apache.sysds.utils.stats.TransformStatistics;
+
+import static org.apache.sysds.runtime.data.SparseBlockCSR.estimateSizeInMemory;
+import static org.apache.sysds.utils.MemoryEstimates.intArrayCost;
 
 public class MultiColumnEncoder implements Encoder {
 
@@ -121,13 +117,6 @@ public class MultiColumnEncoder implements Encoder {
 					pool.shutdown();
 				}
 				outputMatrixPostProcessing(out, k);
-				for (ColumnEncoderComposite lenc : _columnEncoders) {
-					if(lenc.hasEncoder(ColumnEncoderBagOfWords.class)){
-						ColumnEncoderBagOfWords bow = lenc.getEncoder(ColumnEncoderBagOfWords.class);
-						//System.out.println("BOW Apply time: " + (bow.accurateApplyEnd - bow.accurateApplyStart) / 1e9);
-						System.out.println("BOW Build time: " + (bow.accurateBuildEnd - bow.accurateBuildStart) / 1e9);
-					}
-				}
 				return out;
 			}
 			else {
@@ -174,8 +163,8 @@ public class MultiColumnEncoder implements Encoder {
 		List<DependencyTask<?>> tasks = new ArrayList<>();
 		List<DependencyTask<?>> applyTAgg = null;
 		Map<Integer[], Integer[]> depMap = new HashMap<>();
-		boolean hasDC = getColumnEncoders(ColumnEncoderDummycode.class).size() > 0;
-		boolean hasBOW = getColumnEncoders(ColumnEncoderBagOfWords.class).size() > 0;
+		boolean hasDC = !getColumnEncoders(ColumnEncoderDummycode.class).isEmpty();
+		boolean hasBOW = !getColumnEncoders(ColumnEncoderBagOfWords.class).isEmpty();
 		boolean applyOffsetDep = false;
 		boolean independentUpdateDC = false;
 		_meta = new FrameBlock(in.getNumColumns(), ValueType.STRING);
@@ -189,7 +178,7 @@ public class MultiColumnEncoder implements Encoder {
 			tasks.addAll(buildTasks);
 			boolean compositeHasDC = e.hasEncoder(ColumnEncoderDummycode.class);
 			boolean compositeHasBOW = e.hasEncoder(ColumnEncoderBagOfWords.class);
-			if(buildTasks.size() > 0) {
+			if(!buildTasks.isEmpty()) {
 				// Check if any Build independent UpdateDC task (Bin+DC, FH+DC)
 				if (compositeHasDC
 					&& buildTasks.size() > 1  //filter out FH
@@ -368,7 +357,7 @@ public class MultiColumnEncoder implements Encoder {
 
 		boolean hasDC = false;
 		boolean hasWE = false;
-		//TODO adapt for BOW
+		//TODO adapt transform apply for BOW
 		int distinctWE = 0;
 		int sizeWE = 0;
 		for(ColumnEncoderComposite columnEncoder : _columnEncoders) {
@@ -496,6 +485,7 @@ public class MultiColumnEncoder implements Encoder {
 		// 	 numBlocks[0]--;
 		// while (numBlocks[1] > 1 && nRow/numBlocks[1] < minNumRows)
 		//	 numBlocks[1]--;
+		// the two while loop should be equal to following code:
 		int optimalPartitions = Math.max(1, nRow / minNumRows);
 		numBlocks[0] = Math.min(numBlocks[0], optimalPartitions);
 		numBlocks[1] = Math.min(numBlocks[1], optimalPartitions);
@@ -506,26 +496,22 @@ public class MultiColumnEncoder implements Encoder {
 		bowNumBuildBlks = Math.min(bowNumBuildBlks, optimalPartitions);
 		bowNumApplyBlks = Math.min(bowNumApplyBlks, optimalPartitions);
 
+
 		// RC: Reduce #build blocks for all encoders if all don't fit in memory
 		if (numBlocks[0] > 1 && !recodeEncoders.isEmpty() && bowEncoders.isEmpty()) {
-			rcdNumBuildBlks = getNumBuildBlksMemorySafe(in, recodeEncoders, rcdNumBuildBlks, false);
+			rcdNumBuildBlks = getNumBuildBlksMemorySafe(in, recodeEncoders, rcdNumBuildBlks, false, nApply);
 		}
 		// BOW: Reduce #build blocks for all encoders if all don't fit in memory
 		else if (bowNumBuildBlks > 1 && recodeEncoders.isEmpty() && !bowEncoders.isEmpty()) {
-			//bowNumBuildBlks = getNumBuildBlksMemorySafe(in, bowEncoders, bowNumBuildBlks, false);
-			//bowNumApplyBlks = bowNumBuildBlks;
-			bowNumBuildBlks = 8;
-			bowNumApplyBlks = 16;
-
-			// Estimate map sizes, fused with other encoders (bag_of_words)
-			//bowNumBuildBlks = getNumBuildBlksMemorySafe(in, bowEncoders, bowNumBuildBlks, false);
+			bowNumBuildBlks = getNumBuildBlksMemorySafe(in, bowEncoders, bowNumBuildBlks, true, nApply);
 		}
 		// RC + BOW: check if all encoders fit into memory
-		else if (numBlocks[0] > 1 && !recodeEncoders.isEmpty()) {
+		else if (bowNumBuildBlks > 1 || rcdNumBuildBlks > 1) {
 			// Estimate map sizes, fused with other encoders (bag_of_words)
-			List<ColumnEncoderComposite> mergedEncoders = new ArrayList<>(recodeEncoders);
-			mergedEncoders.addAll(bowEncoders);
-			getNumBuildBlksMemorySafe(in, mergedEncoders, bowNumBuildBlks + rcdNumBuildBlks, true);
+			List<List<ColumnEncoderComposite>> encoders = new ArrayList<>();
+			encoders.add(recodeEncoders);
+			encoders.add(bowEncoders);
+			getNumBuildBlksMixedEncMemorySafe(in, encoders, new int[]{rcdNumBuildBlks, bowNumBuildBlks}, nApply);
 		}
 		// TODO: If still don't fit, serialize the column encoders
 
@@ -549,17 +535,17 @@ public class MultiColumnEncoder implements Encoder {
 		//System.out.println("Block count = ["+numBlocks[0]+", "+numBlocks[1]+"], Recode block count = "+rcdNumBuildBlks);
 	}
 
-	private int getNumBuildBlksMemorySafe(CacheBlock<?> in, List<ColumnEncoderComposite> encoders, int numBldBlks,
-										  boolean merged) {
+	private int getNumBuildBlksMemorySafe(CacheBlock<?> in, List<ColumnEncoderComposite> encoders, int numBldBlks, boolean hasBOW, int nApply) {
 		estimateMapSize(in, encoders);
 		// Memory budget for maps = 70% of heap - sizeof(input)
 		long memBudget = (long) (OptimizerUtils.getLocalMemBudget() - in.getInMemorySize());
+		if(hasBOW){
+			// integer arrays: nnzPerRow for each bow encoder
+			memBudget -= encoders.size()*(long) intArrayCost(in.getNumRows());
+		}
 		// Worst case scenario: all partial maps contain all distinct values (if < #rows)
 		long totMemOverhead = getTotalMemOverhead(in, numBldBlks, encoders);
 
-		if(merged && totMemOverhead > memBudget){
-			throw new NotImplementedException("Recode and Bag of Words encoder does not fit into the local memory");
-		}
 		// Reduce recode build blocks count till they fit in the memory budget
 		while (numBldBlks > 1 && totMemOverhead > memBudget) {
 			numBldBlks--;
@@ -567,6 +553,48 @@ public class MultiColumnEncoder implements Encoder {
 			// TODO: Reduce only the ones with large maps
 		}
 		return numBldBlks;
+	}
+
+	private void getNumBuildBlksMixedEncMemorySafe(CacheBlock<?> in, List<List<ColumnEncoderComposite>> encs, int[] blks, int nApply) {
+		// Memory budget for maps = 70% of heap - sizeof(input)
+		long memBudget = (long) (OptimizerUtils.getLocalMemBudget() - in.getInMemorySize());
+		// integer arrays: nnzPerRow for each bow encoder
+		memBudget -= encs.get(1).size()*((long) intArrayCost(in.getNumRows()));
+
+		int numOfEncTypes = encs.size();
+		long[] totMemOverhead = new long[numOfEncTypes];
+		for (int i = 0; i < numOfEncTypes; i++) {
+			estimateMapSize(in, encs.get(i));
+			// Worst case scenario: all partial maps contain all distinct values (if < #rows)
+			totMemOverhead[i] = getTotalMemOverhead(in, blks[i], encs.get(i));
+		}
+
+		int next = blks[1] > 1 ? 1 : 0;
+		// round-robin reducing
+		int skipped = 0;
+		while (skipped != numOfEncTypes && Arrays.stream(totMemOverhead).sum() > memBudget) {
+			if(blks[next] > 1){
+				blks[next]--;
+				totMemOverhead[next] = getTotalMemOverhead(in, blks[next], encs.get(next));
+				next = (next + 1) % numOfEncTypes;
+				skipped = 0;
+			} else
+				skipped++;
+		}
+		// TODO: Reduce the large encoder types, similar to getNumBuildBlksMemorySafe
+	}
+
+	private long estimateSparseOutputSize(List<ColumnEncoderComposite> bowEncs, int nApply, int nRows){
+		// #rows x (#col - #bowEncs + bow-avg-nnz)
+		double avgNnzPerRow = 0.0;
+		for (ColumnEncoderComposite enc : bowEncs){
+			ColumnEncoderBagOfWords bow = enc.getEncoder(ColumnEncoderBagOfWords.class);
+			avgNnzPerRow += bow.avgNnzPerRow;
+		}
+		long nnzBow = (long) (avgNnzPerRow*nRows);
+		long nnzOther = (long) nRows *(nApply - bowEncs.size());
+		long nnz = nnzBow + nnzOther;
+		return estimateSizeInMemory(nRows, nnz);
 	}
 
 	private void estimateMapSize(CacheBlock<?> in, List<ColumnEncoderComposite> encList) {
@@ -611,7 +639,6 @@ public class MultiColumnEncoder implements Encoder {
 		}
 		// Estimate map size of each partition and sum
 		for (ColumnEncoderComposite enc : encoders) {
-			//long avgEntrySize = rce.getEstMetaSize()/ rce.getEstNumDistincts();
 			int partSize = in.getNumRows()/nBuildpart;
 			int partNumDist = Math.min(partSize, enc.getEstNumDistincts()); //#distincts not more than #rows
 			if(enc.getAvgEntrySize() == 0)
@@ -698,7 +725,8 @@ public class MultiColumnEncoder implements Encoder {
 		else {
 			output.recomputeNonZeros(k);
 		}
-
+		System.out.println(output.getNonZeros());
+		System.out.println("outputsize : " + output.getInMemorySize());
 		
 		if(DMLScript.STATISTICS)
 			TransformStatistics.incOutMatrixPostProcessingTime(System.nanoTime()-t0);
@@ -1244,7 +1272,6 @@ public class MultiColumnEncoder implements Encoder {
 					hasDC = true;
 				else if(enc.hasEncoder(ColumnEncoderBagOfWords.class)){
 					ColumnEncoderBagOfWords bowEnc = enc.getEncoder(ColumnEncoderBagOfWords.class);
-					bowEnc.accurateApplyStart = DMLScript.STATISTICS ? System.nanoTime() : 0;
 					numBOWEncoder++;
 					nnzBOW += bowEnc.nnz;
 					if(nnzPerRowBOW != null)
@@ -1252,7 +1279,7 @@ public class MultiColumnEncoder implements Encoder {
 							nnzPerRowBOW[i] += bowEnc.nnzPerRow[i];
 						}
 					else {
-						nnzPerRowBOW = bowEnc.nnzPerRow;
+						nnzPerRowBOW = bowEnc.nnzPerRow.clone();
 					}
 				}
 				else if(enc.hasEncoder(ColumnEncoderWordEmbedding.class)){
@@ -1267,7 +1294,6 @@ public class MultiColumnEncoder implements Encoder {
 			boolean sparse = MatrixBlock.evalSparseFormatInMemory(_input.getNumRows(), numCols, estNNz) && !hasUDF;
 			_output.reset(_input.getNumRows(), numCols, sparse, estNNz);
 			outputMatrixPreProcessing(_output, _input, hasDC, hasWE, distinctWE, sizeWE, numBOWEncoder, nnzPerRowBOW, (int) estNNz);
-
 			return null;
 		}
 
@@ -1360,7 +1386,7 @@ public class MultiColumnEncoder implements Encoder {
 						ColumnEncoderBagOfWords bow = enc.getEncoder(ColumnEncoderBagOfWords.class);
 						currentOffset += bow.getDomainSize() - 1;
 						if(sparseRowPointerOffsets == null)
-							sparseRowPointerOffsets = bow.nnzPerRow;
+							sparseRowPointerOffsets = bow.nnzPerRow.clone();
 						else
 							for (int r = 0; r < sparseRowPointerOffsets.length; r++) {
 								sparseRowPointerOffsets[r] += bow.nnzPerRow[r] - 1;

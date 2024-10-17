@@ -22,6 +22,16 @@
 # Read the token sequence (1K) w/ 100 distinct tokens
 Data = read($1, data_type="frame", format="csv");
 
+if(as.boolean($4) & as.boolean($6)){
+  RecCol= read($7, data_type="frame", format="csv");
+  Data = cbind(Data,RecCol)
+}
+if(as.boolean($5) & as.boolean($6)){
+  Data = cbind(Data,Data)
+}
+
+while(FALSE){}
+
 if (as.boolean($4)) {
   if (as.boolean($5)) {
     jspec = "{ids: true, bag_of_words: [1,3], recode : [2,4]}";
@@ -46,7 +56,7 @@ if (as.boolean($4)) {
 i = 0
 total = 0
 j = 0
-while(i < 20){
+while(i < 1){
   t0 = time()
   [Data_enc, Meta] = transformencode(target=Data, spec=jspec);
   if(i > 10){

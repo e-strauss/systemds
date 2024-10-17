@@ -106,7 +106,6 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 
 		if (DMLScript.STATISTICS){
 			long t = System.nanoTime()-t0;
-			//System.out.println(t / 1e9);
 			switch (this.getTransformType()){
 				case RECODE:
 					TransformStatistics.incRecodeApplyTime(t);
@@ -160,7 +159,7 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 		for(int i = rowStart; i < rowEnd; i+=B) {
 			int lim = Math.min(i+B, rowEnd);
 			for (int ii=i; ii<lim; ii++) {
-				index += sparseRowPointerOffset != null ? sparseRowPointerOffset[ii] : 0;
+				int indexWithOffset = sparseRowPointerOffset != null ? sparseRowPointerOffset[ii] - 1 + index : index;
 				if (mcsr) {
 					SparseRowVector row = (SparseRowVector) out.getSparseBlock().get(ii);
 					row.values()[index] = codes[ii-rowStart];
@@ -170,8 +169,8 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 					// Manually fill the column-indexes and values array
 					SparseBlockCSR csrblock = (SparseBlockCSR)out.getSparseBlock();
 					int rptr[] = csrblock.rowPointers();
-					csrblock.indexes()[rptr[ii]+index] = outputCol;
-					csrblock.values()[rptr[ii]+index] = codes[ii-rowStart];
+					csrblock.indexes()[rptr[ii]+indexWithOffset] = outputCol;
+					csrblock.values()[rptr[ii]+indexWithOffset] = codes[ii-rowStart];
 				}
 			}
 		}
@@ -351,17 +350,12 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 
 	protected void estimateDistinctTokens(int numSamples, @NotNull HashMap<String, Integer> distinctFreq,
 										  int totNumTokens, long totSize) {
-		//todo switch estimation to long
 
 		// Estimate total #distincts using Hass and Stokes estimator
 		int[] freq = distinctFreq.values().stream().mapToInt(v -> v).toArray();
 		int estDistCount = SampleEstimatorFactory.distinctCount(freq, totNumTokens,
 				numSamples, SampleEstimatorFactory.EstimationType.HassAndStokes);
 		setEstNumDistincts(estDistCount);
-//		System.out.println("num of words in the sample: " + numSamples);
-//		System.out.println("num of distinct words in the sample: " + distinctFreq.size());
-//		System.out.println("total word count estimation " + totNumTokens);
-//		System.out.println("distinct word count estimation " + estDistCount);
 		// Compute total size estimates for each partial recode map
 		// We assume each partial map contains all distinct values and have the same size
 		long avgKeySize = totSize / distinctFreq.size();
@@ -390,9 +384,11 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 			tasks.add(getBuildTask(in));
 		}
 		else {
+			if(this instanceof ColumnEncoderBagOfWords)
+				((ColumnEncoderBagOfWords) this).initNnzPartials(in.getNumRows(), blockSizes.length);
 			HashMap<Integer, Object> ret = new HashMap<>();
 			for(int startRow = 0, i = 0; i < blockSizes.length; startRow+=blockSizes[i], i++)
-				tasks.add(getPartialBuildTask(in, startRow, blockSizes[i], ret));
+				tasks.add(getPartialBuildTask(in, startRow, blockSizes[i], ret, i));
 			tasks.add(getPartialMergeBuildTask(ret));
 			dep = new ArrayList<>(Collections.nCopies(tasks.size() - 1, null));
 			dep.add(tasks.subList(0, tasks.size() - 1));
@@ -405,7 +401,7 @@ public abstract class ColumnEncoder implements Encoder, Comparable<ColumnEncoder
 	}
 
 	public Callable<Object> getPartialBuildTask(CacheBlock<?> in, int startRow, 
-			int blockSize, HashMap<Integer, Object> ret) {
+			int blockSize, HashMap<Integer, Object> ret, int p) {
 		throw new DMLRuntimeException(
 			"Trying to get the PartialBuild task of an Encoder which does not support  partial building");
 	}

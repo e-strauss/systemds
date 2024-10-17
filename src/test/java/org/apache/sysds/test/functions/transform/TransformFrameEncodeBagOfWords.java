@@ -19,20 +19,16 @@
 
 package org.apache.sysds.test.functions.transform;
 
-import org.apache.hadoop.yarn.webapp.hamlet2.Hamlet;
 import org.apache.sysds.common.Types;
 import org.apache.sysds.common.Types.ExecMode;
 import org.apache.sysds.runtime.frame.data.FrameBlock;
 import org.apache.sysds.runtime.matrix.data.MatrixValue;
-import org.apache.sysds.runtime.transform.encode.ColumnEncoderBagOfWords;
 import org.apache.sysds.test.AutomatedTestBase;
 import org.apache.sysds.test.TestConfiguration;
 import org.apache.sysds.test.TestUtils;
 import org.junit.Test;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -46,7 +42,8 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 	private final static String TEST_NAME1 = "TransformFrameEncodeBagOfWords";
 	private final static String TEST_DIR = "functions/transform/";
 	private final static String TEST_CLASS_DIR = TEST_DIR + TransformFrameEncodeBagOfWords.class.getSimpleName() + "/";
-	private final static String DATASET = "amazonReview2023/Digital_Music_Head16k.csv";
+	private final static String DATASET = "amazonReview2023/Digital_Music_Text.csv";
+	private final static String RECODE_DATASET = "amazonReview2023/RandRecCol.csv";
 
 	@Override
 	public void setUp() {
@@ -54,66 +51,10 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 		addTestConfiguration(TEST_NAME1, new TestConfiguration(TEST_CLASS_DIR, TEST_NAME1));
 	}
 
+	// These tests result in dense output
 	@Test
 	public void testTransformBagOfWords() {
 		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, false, false);
-	}
-
-	@Test
-	public void testTransformBagOfWordsAmazonReviews() {
-		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, false, false, true);
-	}
-
-	static class Pair {
-		int key;
-		int value;
-
-		Pair(int key, int value) {
-			this.key = key;
-			this.value = value;
-		}
-	}
-
-	private static void insertionSort(Pair[] arr) {
-		for (int i = 1; i < arr.length; i++) {
-			Pair current = arr[i];
-			int j = i - 1;
-			while (j >= 0 && arr[j].key > current.key) {
-				arr[j + 1] = arr[j];
-				j--;
-			}
-			arr[j + 1] = current;
-		}
-	}
-
-	@Test
-	public void testSort(){
-		int len1 = 150;
-		int len2 = 700000;
-		Pair[][] data = new Pair[len2][len1];
-		Random random = new Random(7);
-		long t00 = System.nanoTime();
-		for (int i = 0; i < len2; i++) {
-			for (int j = 0; j < len1; j++) {
-				data[i][j] = new Pair(random.nextInt(), random.nextInt());
-			}
-		}
-		long t0 = System.nanoTime();
-		System.out.println((t0 - t00)*1e-9);
-		for (int j = 0; j < len2 / 2; j++) {
-			// insertion sorts performs better for small arrays
-			//Arrays.sort(data[j], Comparator.comparingInt(pair -> pair.key));
-			insertionSort(data[j]);
-		}
-		long t1 = System.nanoTime();
-		for (int j = len2 / 2; j < len2; j++) {
-			// insertion sorts performs better for small arrays
-			//insertionSort(data[j]);
-			Arrays.sort(data[j], Comparator.comparingInt(pair -> pair.key));
-		}
-		long t2 = System.nanoTime();
-		System.out.println((t1 - t0)*1e-9);
-		System.out.println((t2 - t1)*1e-9);
 	}
 
 	@Test
@@ -129,6 +70,27 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 	@Test
 	public void testTransformBagOfWordsPlusRecode2() {
 		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, true, true);
+	}
+
+	// AmazonReviewDataset transformation results in a sparse output
+	@Test
+	public void testTransformBagOfWordsAmazonReviews() {
+		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, false, false, true);
+	}
+
+	@Test
+	public void testTransformBagOfWordsAmazonReviews2() {
+		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, false, true, true);
+	}
+
+	@Test
+	public void testTransformBagOfWordsAmazonReviewsAndRandRecode() {
+		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, true, false, true);
+	}
+
+	@Test
+	public void testTransformBagOfWordsAmazonReviewsAndRandRecode2() {
+		runTransformTest(TEST_NAME1, ExecMode.SINGLE_NODE, true, true, true);
 	}
 
 	//@Test
@@ -150,16 +112,16 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 			fullDMLScriptName = getScript();
 
 			// Create the dataset by repeating and shuffling the distinct tokens
-			String[] sentenceColumn = fromFile ? readReviews(DATASET_DIR + DATASET) : new String[]{"This is the " +
+			String[] sentenceColumn = fromFile ? readSingleColumnStringCSV(DATASET_DIR + DATASET) : new String[]{"This is the " +
 					"first document","This document is the second document",
 					"And this is the third one","Is this the first document"};
-			String[] recodeColumn = recode ? new String[]{"A", "B", "A", "C"} : null;
+			String[] recodeColumn = recode ? fromFile ? readSingleColumnStringCSV(DATASET_DIR + RECODE_DATASET) : new String[]{"A", "B", "A", "C"} : null;
 			if(!fromFile)
 				writeStringsToCsvFile(sentenceColumn, recodeColumn, baseDirectory + INPUT_DIR + "data", dup);
 
 			programArgs = new String[]{"-stats","-args", fromFile ? DATASET_DIR + DATASET : input("data"),
-					output("result"), output("dict"),
-					String.valueOf(recode), String.valueOf(dup)};
+					output("result"), output("dict"), String.valueOf(recode), String.valueOf(dup),
+					String.valueOf(fromFile), DATASET_DIR + RECODE_DATASET};
 			runTest(true, EXCEPTION_NOT_EXPECTED, null, -1);
 
 			FrameBlock dict_frame = readDMLFrameFromHDFS( "dict", Types.FileFormat.CSV);
@@ -181,7 +143,7 @@ public class TransformFrameEncodeBagOfWords extends AutomatedTestBase
 		}
 	}
 
-	private String[] readReviews(String s) {
+	private String[] readSingleColumnStringCSV(String s) {
         try {
             FrameBlock in = readDMLFrameFromHDFS(s, Types.FileFormat.CSV, false);
 			String[] out = new String[in.getNumRows()];

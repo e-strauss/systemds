@@ -130,6 +130,7 @@ public class ColumnEncoderRecode extends ColumnEncoder {
 	}
 
 	public void computeMapSizeEstimate(CacheBlock<?> in, int[] sampleIndices) {
+		long t0 = System.nanoTime();
 		if (getEstMetaSize() != 0)
 			return;
 
@@ -151,6 +152,7 @@ public class ColumnEncoderRecode extends ColumnEncoder {
 		}
 
 		estimateDistinctTokens(sampleIndices.length, distinctFreq, in.getNumRows(), totSize);
+		System.out.println("Elapsed time for bow encoder map size estimation: " + ((double) System.nanoTime() - t0) / 1000000 + " ms");
 	}
 
 	@Override
@@ -176,7 +178,7 @@ public class ColumnEncoderRecode extends ColumnEncoder {
 
 	@Override
 	public Callable<Object> getPartialBuildTask(CacheBlock<?> in, int startRow, 
-			int blockSize, HashMap<Integer, Object> ret) {
+			int blockSize, HashMap<Integer, Object> ret, int p) {
 		return new RecodePartialBuildTask(in, _colID, startRow, blockSize, ret);
 	}
 
