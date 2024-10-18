@@ -701,10 +701,15 @@ public class MultiColumnEncoder implements Encoder {
 				// Not using the set() methods to 1) avoid binary search and shifting, 
 				// 2) reduce thread contentions on the arrays
 				int[] rptr = csrblock.rowPointers();
-				for (int i=0; i<rptr.length-1; i++) { //TODO: parallelize
-					int nnzPerRow = input.getNumColumns() - numBOW + nnzPerRowBOW[i];
-					rptr[i+1] = rptr[i] + nnzPerRow;
-				}
+				if(nnzPerRowBOW != null)
+					for (int i=0; i<rptr.length-1; i++) { //TODO: parallelize
+						int nnzPerRow = input.getNumColumns() - numBOW + nnzPerRowBOW[i];
+						rptr[i+1] = rptr[i] + nnzPerRow;
+					}
+				else
+					for (int i=0; i<rptr.length-1; i++) { //TODO: parallelize
+						rptr[i+1] = rptr[i] + input.getNumColumns();
+					}
 				output.setSparseBlock(csrblock);
 			}
 		}
