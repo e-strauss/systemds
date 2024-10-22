@@ -28,11 +28,11 @@ import org.junit.Test;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 
-public class TyposInStatementTest extends AutomatedTestBase
+public class TyposInIfStatementTest extends AutomatedTestBase
 {
 	private final static String TEST_DIR = "functions/misc/";
-	private final static String TEST_NAME1 = "TypoInIfStatement";
-	private final static String TEST_CLASS_DIR = TEST_DIR + TyposInStatementTest.class.getSimpleName() + "/";
+	private final static String TEST_NAME1 = "TypoInIfBody";
+	private final static String TEST_CLASS_DIR = TEST_DIR + TyposInIfStatementTest.class.getSimpleName() + "/";
 	
 	@Override
 	public void setUp() {
@@ -52,10 +52,10 @@ public class TyposInStatementTest extends AutomatedTestBase
 		fullDMLScriptName = HOME + testName + ".dml";
 		programArgs = new String[]{"-explain"};
 		
-//		boolean oldBuff = getOutputBuffering();
-//		setOutputBuffering(false);
-//		PrintStream oldErr = System.err;
-//		String out = null;
+		boolean oldBuff = getOutputBuffering();
+		setOutputBuffering(false);
+		PrintStream oldErr = System.err;
+		String out = null;
 		try {
 //			ByteArrayOutputStream buff = new ByteArrayOutputStream();
 //			System.setErr(new PrintStream(buff));
@@ -63,11 +63,11 @@ public class TyposInStatementTest extends AutomatedTestBase
 //			out = buff.toString();
 		}
 		finally {
-//			System.setErr(oldErr);
-//			setOutputBuffering(oldBuff);
+			System.setErr(oldErr);
+			setOutputBuffering(oldBuff);
 		}
-//		System.out.println(out);
-//		if( testName.equals(TEST_NAME1) )
-//			Assert.assertTrue(out.contains("invalid valuetype"));
+		System.out.println(out);
+		if( testName.equals(TEST_NAME1) )
+			Assert.assertTrue(out.contains("invalid valuetype"));
 	}
 }
