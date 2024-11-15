@@ -56,7 +56,8 @@ public class ColumnEncoderSerializationTest extends AutomatedTestBase
 		RECODE,
 		DUMMY,
 		IMPUTE,
-		OMIT
+		OMIT,
+		BOW
 	}
 
 	@Override
@@ -88,6 +89,12 @@ public class ColumnEncoderSerializationTest extends AutomatedTestBase
 	@Test
 	public void testComposite8() { runTransformSerTest(TransformType.OMIT, schemaStrings); }
 
+	@Test
+	public void testComposite9() { runTransformSerTest(TransformType.BOW, schemaStrings); }
+
+	@Test
+	public void testComposite10() { runTransformSerTest(TransformType.BOW, schemaMixed); }
+
 
 
 
@@ -117,6 +124,8 @@ public class ColumnEncoderSerializationTest extends AutomatedTestBase
 					"{ \"id\": 7, \"method\": \"global_mode\" }, { \"id\": 9, \"method\": \"global_mean\" } ]\n\n}";
 		else if (type == TransformType.OMIT)
 			spec = "{ \"ids\": true, \"omit\": [ 1,2,4,5,6,7,8,9 ], \"recode\": [ 2, 7 ] }";
+		else if (type == TransformType.BOW)
+			spec = "{ \"ids\": true, \"omit\": [ 1,4,5,6,8,9 ], \"bag_of_words\": [ 2, 7 ] }";
 
 		frame.setSchema(schema);
 		String[] cnames = frame.getColumnNames();

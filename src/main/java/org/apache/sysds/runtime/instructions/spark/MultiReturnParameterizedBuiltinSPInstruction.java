@@ -61,15 +61,8 @@ import org.apache.sysds.runtime.matrix.data.MatrixIndexes;
 import org.apache.sysds.runtime.matrix.operators.Operator;
 import org.apache.sysds.runtime.meta.DataCharacteristics;
 import org.apache.sysds.runtime.transform.TfUtils;
-import org.apache.sysds.runtime.transform.encode.ColumnEncoder;
-import org.apache.sysds.runtime.transform.encode.ColumnEncoderBin;
-import org.apache.sysds.runtime.transform.encode.ColumnEncoderComposite;
-import org.apache.sysds.runtime.transform.encode.ColumnEncoderRecode;
-import org.apache.sysds.runtime.transform.encode.Encoder;
-import org.apache.sysds.runtime.transform.encode.EncoderFactory;
-import org.apache.sysds.runtime.transform.encode.EncoderMVImpute;
+import org.apache.sysds.runtime.transform.encode.*;
 import org.apache.sysds.runtime.transform.encode.EncoderMVImpute.MVMethod;
-import org.apache.sysds.runtime.transform.encode.MultiColumnEncoder;
 import org.apache.sysds.runtime.transform.meta.TfMetaUtils;
 import org.apache.sysds.runtime.transform.meta.TfOffsetMap;
 
@@ -263,6 +256,7 @@ public class MultiReturnParameterizedBuiltinSPInstruction extends ComputationSPI
 			// encoder-specific outputs
 			List<ColumnEncoderRecode> raEncoders = _encoder.getColumnEncoders(ColumnEncoderRecode.class);
 			List<ColumnEncoderBin> baEncoders = _encoder.getColumnEncoders(ColumnEncoderBin.class);
+			List<ColumnEncoderBagOfWords> bowEncoders = _encoder.getColumnEncoders(ColumnEncoderBagOfWords.class);
 			ArrayList<Tuple2<Integer, Object>> ret = new ArrayList<>();
 
 			// output recode maps as columnID - token pairs
@@ -273,8 +267,14 @@ public class MultiReturnParameterizedBuiltinSPInstruction extends ComputationSPI
 				for(Entry<Integer, HashSet<Object>> e1 : tmp.entrySet())
 					for(Object token : e1.getValue())
 						ret.add(new Tuple2<>(e1.getKey(), token));
-				if(!raEncoders.isEmpty())
-					raEncoders.forEach(columnEncoderRecode -> columnEncoderRecode.getCPRecodeMapsPartial().clear());
+				raEncoders.forEach(columnEncoderRecode -> columnEncoderRecode.getCPRecodeMapsPartial().clear());
+			}
+
+			if(!bowEncoders.isEmpty()){
+				for (ColumnEncoderBagOfWords bowEnc : bowEncoders)
+					for (Object token : bowEnc.getPartialTokenDictionary())
+						ret.add(new Tuple2<>(bowEnc.getColID(), token));
+				bowEncoders.forEach(enc -> enc.getPartialTokenDictionary().clear());
 			}
 
 			// output binning column min/max as columnID - min/max pairs
@@ -321,7 +321,8 @@ public class MultiReturnParameterizedBuiltinSPInstruction extends ComputationSPI
 			StringBuilder sb = new StringBuilder();
 
 			// handle recode maps
-			if(_encoder.containsEncoderForID(colID, ColumnEncoderRecode.class)) {
+			if(_encoder.containsEncoderForID(colID, ColumnEncoderRecode.class) ||
+					_encoder.containsEncoderForID(colID, ColumnEncoderBagOfWords.class)) {
 				while(iter.hasNext()) {
 					String token = TfUtils.sanitizeSpaces(iter.next().toString());
 					sb.append(rowID).append(' ').append(scolID).append(' ');

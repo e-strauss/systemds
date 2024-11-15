@@ -29,6 +29,9 @@ import org.apache.sysds.runtime.frame.data.FrameBlock;
 import org.apache.sysds.runtime.matrix.data.MatrixBlock;
 import org.apache.sysds.utils.stats.TransformStatistics;
 
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -46,7 +49,8 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 
 	public static int NUM_SAMPLES_MAP_ESTIMATION = 16000;
 	protected int[] nnzPerRow;
-	private Map<String, Integer> tokenDictionary;
+	private Map<Object, Long> tokenDictionary; // switched from int to long to reuse code from RecodeEncoder
+	private HashSet<Object> tokenDictionaryPart = null;
 	protected String seperatorRegex = "\\s+"; // whitespace
 	protected boolean caseSensitive = false;
 	protected long nnz = 0;
@@ -62,9 +66,31 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 		super(-1);
 	}
 
+	public ColumnEncoderBagOfWords(ColumnEncoderBagOfWords enc) {
+		super(enc._colID);
+		this.nnzPerRow = enc.nnzPerRow != null ? enc.nnzPerRow.clone() : null;
+		this.tokenDictionary = enc.tokenDictionary;
+	}
+
 	protected void initNnzPartials(int rows, int numBlocks){
 		this.nnzPerRow = new int[rows];
 		this.nnzPartials = new long[numBlocks];
+	}
+
+	public double computeNnzEstimate(CacheBlock<?> in, int[] sampleIndices) {
+		// estimates the nnz per row for this encoder
+		final int max_index = Math.min(ColumnEncoderBagOfWords.NUM_SAMPLES_MAP_ESTIMATION, sampleIndices.length);
+		int nnz = 0;
+		for (int i = 0; i < max_index; i++) {
+			int sind = sampleIndices[i];
+			String current = in.getString(sind, this._colID - 1);
+			if(current != null)
+				for(String token : tokenize(current, caseSensitive, seperatorRegex))
+					if(!token.isEmpty() && tokenDictionary.containsKey(token)){
+						nnz++;
+					}
+		}
+		return (double) nnz / max_index;
 	}
 
 	public void computeMapSizeEstimate(CacheBlock<?> in, int[] sampleIndices) {
@@ -118,6 +144,18 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 		_estMetaSize = _estNumDistincts * _avgEntrySize;
 	}
 
+	public void computeNnzPerRow(CacheBlock<?> in, int start, int end){
+		for (int i = start; i < end; i++) {
+			String current = in.getString(i, this._colID - 1);
+			HashSet<String> distinctTokens = new HashSet<>();
+			if(current != null)
+				for(String token : tokenize(current, caseSensitive, seperatorRegex))
+					if(!token.isEmpty() && tokenDictionary.containsKey(token))
+						distinctTokens.add(token);
+			this.nnzPerRow[i] = distinctTokens.size();
+		}
+	}
+
 	public static String[] tokenize(String current, boolean caseSensitive, String seperatorRegex) {
 		// string builder is faster than regex
 		StringBuilder finalString = new StringBuilder();
@@ -150,8 +188,6 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 		return TransformType.BAG_OF_WORDS;
 	}
 
-
-
 	public Callable<Object> getBuildTask(CacheBlock<?> in) {
 		return new ColumnBagOfWordsBuildTask(this, in);
 	}
@@ -160,7 +196,7 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 	public void build(CacheBlock<?> in) {
 		long t0 = DMLScript.STATISTICS ? System.nanoTime() : 0;
 		tokenDictionary = new HashMap<>(_estNumDistincts);
-		int i = 0;
+		int i = 1;
 		this.nnz = 0;
 		nnzPerRow = new int[in.getNumRows()];
 		HashSet<String> tokenSetPerRow;
@@ -173,7 +209,7 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 					if(!token.isEmpty()){
 						tokenSetPerRow.add(token);
 						if(!this.tokenDictionary.containsKey(token))
-							this.tokenDictionary.put(token, i++);
+							this.tokenDictionary.put(token, (long) i++);
 					}
 			this.nnzPerRow[r] = tokenSetPerRow.size();
 			this.nnz += tokenSetPerRow.size();
@@ -205,6 +241,33 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 		}
 	}
 
+	@Override
+	public void prepareBuildPartial() {
+		// ensure allocated partial recode map
+		if(tokenDictionaryPart == null)
+			tokenDictionaryPart = new HashSet<>();
+	}
+
+
+	public HashSet<Object> getPartialTokenDictionary(){
+		return this.tokenDictionaryPart;
+	}
+
+	@Override
+	public void buildPartial(FrameBlock in) {
+		if(!isApplicable())
+			return;
+		for (int r = 0; r < in.getNumRows(); r++) {
+			String current = in.getString(r, this._colID - 1);
+			if(current != null)
+				for(String token : tokenize(current, caseSensitive, seperatorRegex)){
+					if(!token.isEmpty()){
+						tokenDictionaryPart.add(token);
+					}
+				}
+		}
+	}
+
 	protected void applySparse(CacheBlock<?> in, MatrixBlock out, int outputCol, int rowStart, int blk) {
 		boolean mcsr = MatrixBlock.DEFAULT_SPARSEBLOCK == SparseBlock.Type.MCSR;
 		mcsr = false; // force CSR for transformencode FIXME
@@ -221,13 +284,16 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 					SparseBlockCSR csrblock = (SparseBlockCSR) out.getSparseBlock();
 					int[] rptr = csrblock.rowPointers();
 					// assert that nnz from build is equal to nnz from apply
-					assert counter.size() == nnzPerRow[r];
-					Pair[] columnValuePairs = new Pair[counter.size()];
+					if(counter.size() != nnzPerRow[r])
+						System.out.println(r + ": " + counter.size() + " vs. " + nnzPerRow[r]);
+					//assert counter.size() == nnzPerRow[r];
+					Pair[] columnValuePairs = new Pair[nnzPerRow[r]];
 					int i = 0;
 					for (Map.Entry<String, Integer> entry : counter.entrySet()) {
 						String token = entry.getKey();
-						columnValuePairs[i] = new Pair(outputCol + tokenDictionary.get(token), entry.getValue());
-						i++;
+						columnValuePairs[i] = new Pair((int) (outputCol + tokenDictionary.getOrDefault(token, 0L) - 1), entry.getValue());
+						// if token is not included columnValuePairs[i] is overwritten in the next iteration
+						i += tokenDictionary.containsKey(token) ? 1 : 0;
 					}
 					// insertion sorts performs better on small arrays
 					if(columnValuePairs.length >= 128)
@@ -266,7 +332,7 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 		for (int r = rowStart; r < Math.max(in.getNumRows(), rowStart + blk); r++) {
 			HashMap<String, Integer> counter = countTokenAppearances(in, r, _colID-1, caseSensitive, seperatorRegex);
 			for (Map.Entry<String, Integer> entry : counter.entrySet())
-				out.set(r, outputCol + tokenDictionary.get(entry.getKey()), entry.getValue());
+				out.set(r, (int) (outputCol + tokenDictionary.get(entry.getKey()) - 1), entry.getValue());
 		}
 	}
 
@@ -291,15 +357,41 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 	public FrameBlock getMetaData(FrameBlock out) {
 		int rowID = 0;
 		StringBuilder sb = new StringBuilder();
-		for(Map.Entry<String, Integer> e : this.tokenDictionary.entrySet()) {
-			out.set(rowID++, _colID - 1, constructRecodeMapEntry(e.getKey(), Long.valueOf(e.getValue()), sb));
+		for(Map.Entry<Object, Long> e : this.tokenDictionary.entrySet()) {
+			out.set(rowID++, _colID - 1, constructRecodeMapEntry(e.getKey(), e.getValue(), sb));
 		}
 		return out;
 	}
 
 	@Override
 	public void initMetaData(FrameBlock meta) {
-		throw new NotImplementedException();
+		if(meta != null && meta.getNumRows() > 0) {
+			this.tokenDictionary = meta.getRecodeMap(_colID - 1);
+		}
+	}
+
+	@Override
+	public void writeExternal(ObjectOutput out) throws IOException {
+		super.writeExternal(out);
+
+		out.writeInt(tokenDictionary == null ? 0 : tokenDictionary.size());
+		if(tokenDictionary != null)
+			for(Map.Entry<Object, Long> e : tokenDictionary.entrySet()) {
+				out.writeUTF((String) e.getKey());
+				out.writeLong(e.getValue());
+			}
+	}
+
+	@Override
+	public void readExternal(ObjectInput in) throws IOException {
+		super.readExternal(in);
+		int size = in.readInt();
+		tokenDictionary = new HashMap<>(size * 4 / 3);
+		for(int j = 0; j < size; j++) {
+			String key = in.readUTF();
+			Long value = in.readLong();
+			tokenDictionary.put(key, value);
+		}
 	}
 
 	private static class BowPartialBuildTask implements Callable<Object> {
@@ -378,11 +470,11 @@ public class ColumnEncoderBagOfWords extends ColumnEncoder {
 		@Override
 		public Object call() {
 			long t0 = DMLScript.STATISTICS ? System.nanoTime() : 0;
-			Map<String, Integer> tokenDictionary = _encoder.tokenDictionary;
+			Map<Object, Long> tokenDictionary = _encoder.tokenDictionary;
 			for(Object tokenSet : _partialMaps.values()){
 				( (HashSet<?>) tokenSet).forEach(token -> {
 					if(!tokenDictionary.containsKey(token))
-						tokenDictionary.put((String) token, tokenDictionary.size());
+						tokenDictionary.put(token, (long) tokenDictionary.size() + 1);
 				});
 			}
 			for (long nnzPartial : _encoder.nnzPartials)
