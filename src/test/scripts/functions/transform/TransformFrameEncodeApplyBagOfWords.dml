@@ -62,7 +62,7 @@ i = 0
 total = 0
 j = 0
 # set to 20 for benchmarking
-while(i < 30){
+while(i < 1){
   t0 = time()
   Data_enc2 = transformapply(target=Data, spec=jspec, meta=Meta)
   if(i > 10){
@@ -72,8 +72,6 @@ while(i < 30){
   i = i + 1
 }
 print(total/1000000000 / j)
-
-i = 0
 
 Error = sign(Data_enc2 - Data_enc)
 Error_agg = sum(Error * Error)
