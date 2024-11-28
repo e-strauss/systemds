@@ -59,9 +59,10 @@ i = 0
 total = 0
 j = 0
 # set to 20 for benchmarking
-while(i < 1){
+while(i < 30){
   t0 = time()
   [Data_enc, Meta] = transformencode(target=Data, spec=jspec);
+  #print(toString(Data_enc[1,1]))
   if(i > 10){
     total = total + time() - t0
     j = j + 1
