@@ -79,7 +79,7 @@
 		<jacoco.skip>false</jacoco.skip>
 		<jacoco.include>**</jacoco.include>
 		<automatedtestbase.outputbuffering>false</automatedtestbase.outputbuffering>
-		<argLine>-Xms3000m -Xmx3000m -Xmn300m</argLine>
+		<argLine>-Xms50000m -Xmx50000m -Xmn5000m</argLine>
 		<enableStats>false</enableStats>
 	</properties>
 
