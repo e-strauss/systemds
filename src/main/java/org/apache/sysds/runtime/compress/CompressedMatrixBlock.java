@@ -589,10 +589,8 @@ public class CompressedMatrixBlock extends MatrixBlock {
 	public MatrixBlock reorgOperations(ReorgOperator op, MatrixValue ret, int startRow, int startColumn, int length) {
 		if(op.fn instanceof SwapIndex && this.getNumColumns() == 1) {
 			MatrixBlock tmp = decompress(op.getNumThreads());
-			long nz = tmp.setNonZeros(tmp.getNonZeros());
-			tmp = new MatrixBlock(tmp.getNumColumns(), tmp.getNumRows(), tmp.getDenseBlockValues());
-			tmp.setNonZeros(nz);
-			return tmp;
+			// add reorg for
+			return tmp.transpose(op.getNumThreads());
 		}
 		else {
 			// Allow transpose to be compressed output. In general we need to have a transposed flag on

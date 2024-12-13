@@ -80,7 +80,7 @@ public class CompressExperimentsTest extends AutomatedTestBase {
 
     @Test
     public void runMLogRegExpAwareIntermediate(){
-        runExp(true, TEST_NAME3, false);
+        runExp(true, TEST_NAME3, true);
     }
 
     @Test
@@ -95,7 +95,12 @@ public class CompressExperimentsTest extends AutomatedTestBase {
 
     @Test
     public void runL2SVMExpAwareIntermediate(){
-        runExp(true, TEST_NAME4, false);
+        runExp(true, TEST_NAME4, true);
+    }
+
+    @Test
+    public void runLMDSExpBase(){
+        runExp(false, TEST_NAME5);
     }
 
     @Test
@@ -104,8 +109,23 @@ public class CompressExperimentsTest extends AutomatedTestBase {
     }
 
     @Test
+    public void runLMDSExpAwareIntermediate(){
+        runExp(true, TEST_NAME5, true);
+    }
+
+    @Test
+    public void runLMCGExpBase(){
+        runExp(true, TEST_NAME6);
+    }
+
+    @Test
     public void runLMCGExpAware(){
         runExp(true, TEST_NAME6);
+    }
+
+    @Test
+    public void runLMCGExpAwareIntermediate(){
+        runExp(true, TEST_NAME6, true);
     }
 
     public void runExp(boolean aware, String test){
