@@ -58,8 +58,8 @@ m_als = function(Matrix[Double] X, Integer rank = 10, String regType = "L2", Dou
   N = 10000; # for large problems, use scalable alsCG
   if( reg != "L2" | nrow(X) > N | ncol(X) > N )
     [U, V] = alsCG(X=X, rank=rank, regType=regType, reg=reg,
-                   maxi=maxi, check=check, thr=threshold, seed = seed, verbose=verbose);
+                   maxi=maxi, check=check, threshold=threshold, seed = seed, verbose=verbose);
   else
     [U, V] = alsDS(X=X, rank=rank, reg=reg, maxi=maxi,
-                   check=check, thr=threshold, seed =seed, verbose=verbose);
+                   check=check, threshold=threshold, seed =seed, verbose=verbose);
 }

@@ -39,7 +39,7 @@
 # -------------------------------------------------------------------------------------
 
 m_adasyn = function(Matrix[Double] X, Matrix[Double] Y, Integer k = 2,
-  Double beta = 1.0, Double dth = 0.9, Integer seed = -1)
+  Double beta = 1.0, Double threshold = 0.9, Integer seed = -1)
   return (Matrix[Double] Xp, Matrix[Double] Yp)
 {
   if(k < 1) {
