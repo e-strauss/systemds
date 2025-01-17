@@ -38,22 +38,22 @@
 #
 # INPUT:
 # ------------------------------------------------------------------------------------------
-# X          Matrix X of feature vectors
-# Y          Single-column Matrix Y of response values
-# intercept  Intercept presence, shifting and rescaling the columns of X:
-#            0 = no intercept, no shifting, no rescaling;
-#            1 = add intercept, but neither shift nor rescale X;
-#            2 = add intercept, shift & rescale X columns to mean = 0, variance = 1
-# reg        Regularization parameter, 0 for no penalty
-# tolerance  Tolerance threshold to train until achieved
-# maxi       Maximum iterations 0 means until tolerance is reached
-# verbose    Indicator for verbose debug output
+# X              Matrix X of feature vectors
+# Y              Single-column Matrix Y of response values
+# intercept      Intercept presence, shifting and rescaling the columns of X:
+#                0 = no intercept, no shifting, no rescaling;
+#                1 = add intercept, but neither shift nor rescale X;
+#                2 = add intercept, shift & rescale X columns to mean = 0, variance = 1
+# reg            Regularization parameter, 0 for no penalty
+# tolerance      Tolerance threshold to train until achieved
+# maxIterations  Maximum iterations 0 means until tolerance is reached
+# verbose        Indicator for verbose debug output
 # ------------------------------------------------------------------------------------------
 #
 # OUTPUT:
 # -----------------------------------------------------------------------------------------------
-# B          Matrix of regression parameters (the betas) and its size depend on intercept input value.
-# S          Matrix of selected features ordered as computed by the algorithm.
+# B              Matrix of regression parameters (the betas) and its size depend on intercept input value.
+# S              Matrix of selected features ordered as computed by the algorithm.
 # -----------------------------------------------------------------------------------------------
 
 m_steplm = function(Matrix[Double] X, Matrix[Double] y, Integer intercept = 0,

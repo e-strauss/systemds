@@ -22,5 +22,5 @@
 X = read($X)
 Y = read($Y)
 model = msvm(X=X,  Y=Y,  intercept = $inc,
-  epsilon = $eps, reg = $lam, maxIterations = $max )
+  threshold = $eps, reg = $lam, maxIterations = $max )
 write(model, $model)
