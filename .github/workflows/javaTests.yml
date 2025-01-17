@@ -29,8 +29,6 @@ on:
       - '*.html'
       - 'src/main/python/**'
       - 'dev/**'
-    branches:
-      - main
   pull_request:
     paths-ignore:
       - 'docs/**'
@@ -38,8 +36,6 @@ on:
       - '*.html'
       - 'src/main/python/**'
       - 'dev/**'
-    branches:
-      - main
 
 jobs:
   java_tests:

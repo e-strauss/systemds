@@ -30,8 +30,6 @@ on:
       - 'src/test/**'
       - 'src/assembly/**'
       - 'dev/**'
-    branches:
-      - main
   pull_request:
     paths-ignore:
       - 'docs/**'
@@ -39,8 +37,6 @@ on:
       - '*.html'
       - 'src/test/**'
       - 'dev/**'
-    branches:
-      - main
 
 jobs:
   test:
