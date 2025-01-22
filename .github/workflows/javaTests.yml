@@ -31,6 +31,7 @@ on:
       - 'dev/**'
     branches:
       - main
+      - dml_parameter_PR # remove me during merge
   pull_request:
     paths-ignore:
       - 'docs/**'

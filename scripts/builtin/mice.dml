@@ -29,7 +29,7 @@
 # ------------------------------------------------------------------------------------
 # X          Data Matrix (Recoded Matrix for categorical features)
 # cMask      A 0/1 row vector for identifying numeric (0) and categorical features (1)
-# iter       Number of iteration for multiple imputations
+# maxIter    Number of iteration for multiple imputations
 # threshold  confidence value [0, 1] for robust imputation, values will only be imputed
 #            if the predicted value has probability greater than threshold,
 #            only applicable for categorical data
@@ -41,7 +41,7 @@
 # output  imputed dataset
 # ---------------------------------------------------------------------------------
 
-m_mice= function(Matrix[Double] X, Matrix[Double] cMask, Integer iter = 3, 
+m_mice= function(Matrix[Double] X, Matrix[Double] cMask, Integer maxIter = 3,
   Double threshold = 0.8, Boolean verbose = FALSE)
   return(Matrix[Double] output, Matrix[Double] meta, Double threshold, Frame[String] dM, List[Unknown] betaList)
 {
@@ -77,7 +77,7 @@ m_mice= function(Matrix[Double] X, Matrix[Double] cMask, Integer iter = 3,
   jspecDC = "{ids:true, dummycode:["+index+"]}";
   [dX, dM] = transformencode(target=as.frame(X1), spec=jspecDC);
   dist = colDist(X1, cMask) # number of distinct items in categorical features
-  for(k in 1:iter) # start iterative imputation
+  for(k in 1:maxIter) # start iterative imputation
   {
     betaList = list()
     betaList = append(betaList, imputationVec)
@@ -110,9 +110,9 @@ m_mice= function(Matrix[Double] X, Matrix[Double] cMask, Integer iter = 3,
         test_Y = slice2a[,in_c]
 
         # learn a regression line
-        beta = lm(X=train_X, y=train_Y, verbose=FALSE, icpt=1, reg = 1e-7, tol = 1e-7);
+        beta = lm(X=train_X, y=train_Y, verbose=FALSE, intercept=1, reg = 1e-7, tol = 1e-7);
         # predicting missing values 
-        pred = lmPredict(X=test_X, B=beta, ytest= matrix(0,1,1), icpt=1, verbose = FALSE)
+        pred = lmPredict(X=test_X, B=beta, ytest= matrix(0,1,1), intercept=1, verbose = FALSE)
         # imputing missing column values (assumes Mask_Filled being 0/1-matrix)
         R = removeEmpty(target=Mask_Filled[, in_c] * seq(1,n), margin="rows");
         # TODO modify removeEmpty to return zero row and n columns

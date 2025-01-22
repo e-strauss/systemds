@@ -129,7 +129,7 @@ wrapImputeByMode = function(Matrix[double] X) return (Matrix[double] out) {
 
 wrapMice = function(Matrix[Double] X, Matrix[Double] cMask, Integer iter = 3,
     Double threshold = 0.8, Boolean verbose = FALSE) return(Matrix[Double] output) {
-  [out,meta,th,dM,betaList] = mice(X=X, cMask=cMask, iter=iter, verbose=verbose);
+  [out,meta,th,dM,betaList] = mice(X=X, cMask=cMask, maxIter=iter, verbose=verbose);
   while(FALSE){}
   output = out;
 }
