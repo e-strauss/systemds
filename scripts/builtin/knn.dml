@@ -61,7 +61,7 @@ m_knn = function(
     Integer k = 5,
     Integer selectK = 0,
     Integer minK = 1,
-    Integer k_max = 100,
+    Integer maxK = 100,
     Integer selectFeature = 0,
     Integer maxFeatures = 10,
     Integer interval = 1000,
@@ -90,21 +90,21 @@ m_knn = function(
     #parameter check
     #parameter re-define
     if( selectK==1 ){
-      if(  k_max >= n_records  ){
-        k_max = n_records - 1;
-        print( "k_max should no greater than number of record, change k_max equal " +
-        "( number of record - 1 ) : " + k_max );
+      if(  maxK >= n_records  ){
+        maxK = n_records - 1;
+        print( "maxK should no greater than number of record, change maxK equal " +
+        "( number of record - 1 ) : " + maxK );
       }
-      if(  k_max >= interval  ){
-        interval = k_max + 1;
-        # k_max should equal interval -1, because we drop self when search nn.
-        print( "interval should be no less than k_max, change interval equal : " +
+      if(  maxK >= interval  ){
+        interval = maxK + 1;
+        # maxK should equal interval -1, because we drop self when search nn.
+        print( "interval should be no less than maxK, change interval equal : " +
         interval );
       }
-      if(  k_max <= 1  )
-        stop( "uncorrect k_max value"  );
-      if(  minK >= k_max )
-        stop( "minK >= k_max" );
+      if(  maxK <= 1  )
+        stop( "uncorrect maxK value"  );
+      if(  minK >= maxK )
+        stop( "minK >= maxK" );
     }
     if( selectFeature == 1 ){
       if(  k >= n_records  ){
@@ -124,12 +124,12 @@ m_knn = function(
       print("Start combined k and feature selection ...");
       [m_selected_feature,s_selected_k] =
         getSelectedFeatureAndK( Train,CL,ctypes,m_start_selected_feature,
-        maxFeatures,minK,k_max,interval );
+        maxFeatures,minK,maxK,interval );
     }
     else if( selectK == 1 ){
       #Select k only
       print("Start k select ...");
-      s_selected_k = getSelectedKBase( Train,CL,ctypes,minK,k_max,interval );
+      s_selected_k = getSelectedKBase( Train,CL,ctypes,minK,maxK,interval );
     }
     else if( selectFeature == 1 ){
       #Select feature only

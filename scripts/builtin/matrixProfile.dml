@@ -47,10 +47,10 @@
 # profile_index  Indices of least distances
 # -----------------------------------------------------------------------------------
 
-m_matrixProfile = function(Matrix[Double] ts, Integer windowSize=4, Double sampleFrac=1.0, Boolean is_verbose=FALSE)
+m_matrixProfile = function(Matrix[Double] ts, Integer windowSize=4, Double sampleFrac=1.0, Boolean verbose=FALSE)
   return(Matrix[Double] profile, Matrix[Double] profile_index)
 {
-  if (is_verbose)
+  if (verbose)
     print ("##############################\n# MATRIXPROFILE SCRIPT ENTRY #\n##############################");
 
   # TODO: preSCRIMP 
@@ -58,7 +58,7 @@ m_matrixProfile = function(Matrix[Double] ts, Integer windowSize=4, Double sampl
 
   n = length(ts);
   [mu,sig] = moving_avg(ts, n, windowSize);
-  if (is_verbose) {
+  if (verbose) {
     print_ts(ts);
     print_ts(mu);
     print_ts(sig);
@@ -78,7 +78,7 @@ m_matrixProfile = function(Matrix[Double] ts, Integer windowSize=4, Double sampl
   s = sample(sample_size, sample_size, FALSE);
   s = s + exclusion_zone;
 
-  if (is_verbose) {
+  if (verbose) {
     print("n: " + n);
     print("windowSize: " + windowSize);
     print("profile_len: " + profile_len);

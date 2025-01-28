@@ -67,15 +67,15 @@ for (r in 1:no_bracket) {
     svmModels[i,2:nrow(beta)+1] = t(beta);
 
     #Run multilogreg with intercept true
-    /*beta = multiLogReg(X=X, Y=y, icpt=2, tol=1e-6, reg=as.scalar(HPlamdas[i,1]),
-      maxi=maxIter, maxii=20, verbose=FALSE);
+    /*beta = multiLogReg(X=X, Y=y, intercept=2, tol=1e-6, reg=as.scalar(HPlamdas[i,1]),
+      maxIter=maxIter, maxInnerIter=20, verbose=FALSE);
     [prob_mlr, Y_mlr, acc] = multiLogRegPredict(X=X, B=beta, Y=y, verbose=FALSE);
     mlrModels[i,1] = acc; #1st column
     mlrModels[i,2:nrow(beta)+1] = t(beta);
 
     #Run multilogreg with intercept false
-    beta = multiLogReg(X=X, Y=y, icpt=1, tol=1e-6, reg=as.scalar(HPlamdas[i,1]),
-      maxi=maxIter, maxii=20, verbose=FALSE);
+    beta = multiLogReg(X=X, Y=y, intercept=1, tol=1e-6, reg=as.scalar(HPlamdas[i,1]),
+      maxIter=maxIter, maxInnerIter=20, verbose=FALSE);
     [prob_mlr, Y_mlr, acc] = multiLogRegPredict(X=X, B=beta, Y=y, verbose=FALSE);
     mlrModels[i,1] = acc; #1st column
     mlrModels[i,2:nrow(beta)+1] = t(beta);*/
